@@ -37,6 +37,8 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AdvCategory.cs" />
+    <Compile Include="AdvOptions.cs" />
     <Compile Include="AdvContainerBase.cs">
       <SubType>Component</SubType>
     </Compile>

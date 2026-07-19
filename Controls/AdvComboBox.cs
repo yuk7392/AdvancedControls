@@ -26,6 +26,7 @@ namespace AdvancedControls.Controls
         private readonly List<object> _items = new List<object>();
         private readonly ObjectCollection _itemsWrapper;
         private readonly AdvDropDownSettings _dropDown = new AdvDropDownSettings();
+        private AdvComboBoxOptions _options;
 
         private AdvComboPopup _popup;
         private TextBox _editor;
@@ -69,8 +70,17 @@ namespace AdvancedControls.Controls
             get { return new Padding(8, 4, 8, 4); }
         }
 
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvComboBoxOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvComboBoxOptions(this)); }
+        }
+
         /// <summary>입력 방식과 드롭다운 목록의 크기 설정.</summary>
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("입력 방식과 드롭다운 목록 설정입니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
         public AdvDropDownSettings DropDown
@@ -945,6 +955,24 @@ namespace AdvancedControls.Controls
 
                 _owner.Invalidate();
             }
+        }
+    }
+
+    /// <summary>AdvComboBox가 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvComboBoxOptions : AdvOptions
+    {
+        private readonly AdvComboBox _owner;
+
+        internal AdvComboBoxOptions(AdvComboBox owner) : base(owner.Styling)
+        {
+            _owner = owner;
+        }
+
+        [Description("입력 방식과 드롭다운 목록 설정입니다.")]
+        public AdvDropDownSettings DropDown
+        {
+            get { return _owner.DropDown; }
         }
     }
 }

@@ -18,6 +18,16 @@ namespace AdvancedControls.Controls
     {
         private AdvTheme _theme;
         private readonly AdvAppearance _appearance = new AdvAppearance();
+        private AdvTabControlOptions _options;
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvTabControlOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvTabControlOptions(this)); }
+        }
 
         public AdvTabControl()
         {
@@ -64,7 +74,7 @@ namespace AdvancedControls.Controls
         /// <summary>
         /// 이 컨트롤이 따를 테마. Inherit이면 전역 테마를 따른다.
         /// </summary>
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvThemeMode.Inherit)]
         [Description("이 탭 컨트롤이 따를 테마입니다. Inherit이면 전역 테마를 따릅니다.")]
         public AdvThemeMode ThemeMode
@@ -274,6 +284,35 @@ namespace AdvancedControls.Controls
                 _appearance.Changed -= OnAppearanceChanged;
             }
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>
+    /// AdvTabControl이 추가한 속성.
+    /// 다른 컨트롤과 달리 Styling을 내놓지 않는다 — 탭 모양과 테두리를 Win32가 그려
+    /// Corners·BorderWidth·Elevated 등이 그리기에 전혀 반영되지 않기 때문이다.
+    /// </summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvTabControlOptions
+    {
+        private readonly AdvTabControl _owner;
+
+        internal AdvTabControlOptions(AdvTabControl owner)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(AdvThemeMode.Inherit)]
+        [Description("이 탭 컨트롤이 따를 테마입니다. Inherit이면 전역 테마를 따릅니다.")]
+        public AdvThemeMode ThemeMode
+        {
+            get { return _owner.ThemeMode; }
+            set { _owner.ThemeMode = value; }
+        }
+
+        public override string ToString()
+        {
+            return string.Empty;
         }
     }
 }

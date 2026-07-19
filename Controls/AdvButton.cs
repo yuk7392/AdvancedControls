@@ -31,6 +31,7 @@ namespace AdvancedControls.Controls
         private bool _isDefault;
         private Image _image;
         private TextImageRelation _textImageRelation = TextImageRelation.ImageBeforeText;
+        private AdvButtonOptions _options;
 
         public AdvButton()
         {
@@ -98,7 +99,7 @@ namespace AdvancedControls.Controls
 
         #endregion
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvButtonKind.Filled)]
         [Description("버튼의 시각적 강조 단계입니다.")]
         public AdvButtonKind Kind
@@ -148,6 +149,15 @@ namespace AdvancedControls.Controls
         protected override bool IsClickable
         {
             get { return true; }
+        }
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvButtonOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvButtonOptions(this)); }
         }
 
         public override Size GetPreferredSize(Size proposedSize)
@@ -415,6 +425,34 @@ namespace AdvancedControls.Controls
         {
             IsPressed = false;
             base.OnLostFocus(e);
+        }
+    }
+
+    /// <summary>AdvButton이 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvButtonOptions : AdvOptions
+    {
+        private readonly AdvButton _owner;
+
+        internal AdvButtonOptions(AdvButton owner) : base(owner.Styling)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(AdvButtonKind.Filled)]
+        [Description("버튼의 시각적 강조 단계입니다.")]
+        public AdvButtonKind Kind
+        {
+            get { return _owner.Kind; }
+            set { _owner.Kind = value; }
+        }
+
+        [DefaultValue(true)]
+        [Description("이 버튼 위에서 손 모양 커서를 보일지 여부입니다.")]
+        public bool UseHandCursor
+        {
+            get { return _owner.UseHandCursor; }
+            set { _owner.UseHandCursor = value; }
         }
     }
 }

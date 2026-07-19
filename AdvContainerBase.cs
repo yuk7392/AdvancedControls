@@ -126,7 +126,7 @@ namespace AdvancedControls
         }
 
         /// <summary>모서리 반경·테두리 두께 등 이 컨테이너의 모양 설정.</summary>
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("이 컨테이너의 모양 설정입니다. 펼쳐서 모서리별 반경 등을 조정합니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
         public AdvAppearance Styling

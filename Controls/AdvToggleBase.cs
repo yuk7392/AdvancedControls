@@ -19,6 +19,7 @@ namespace AdvancedControls.Controls
         private bool _checked;
         private readonly AdvAnimator _checkAnim;
         private readonly AdvGlyphSettings _glyph = new AdvGlyphSettings();
+        private AdvToggleOptions _options;
 
         [Category("Behavior")]
         [Description("체크 상태가 바뀔 때 발생합니다.")]
@@ -33,7 +34,7 @@ namespace AdvancedControls.Controls
         }
 
         /// <summary>표시 도형의 크기·간격·좌우 배치.</summary>
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("표시 도형의 크기와 배치입니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
         public AdvGlyphSettings Glyph
@@ -73,6 +74,15 @@ namespace AdvancedControls.Controls
         protected override bool IsClickable
         {
             get { return true; }
+        }
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvToggleOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvToggleOptions(this)); }
         }
 
         /// <summary>도형 + 간격 + 글자에 글로우 여백을 더한 크기.</summary>
@@ -298,6 +308,32 @@ namespace AdvancedControls.Controls
                 _glyph.LayoutChanged -= OnGlyphLayoutChanged;
             }
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>체크박스·라디오·스위치가 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvToggleOptions : AdvOptions
+    {
+        private readonly AdvToggleBase _owner;
+
+        internal AdvToggleOptions(AdvToggleBase owner) : base(owner.Styling)
+        {
+            _owner = owner;
+        }
+
+        [Description("표시 도형의 크기와 배치입니다.")]
+        public AdvGlyphSettings Glyph
+        {
+            get { return _owner.Glyph; }
+        }
+
+        [DefaultValue(true)]
+        [Description("이 컨트롤 위에서 손 모양 커서를 보일지 여부입니다.")]
+        public bool UseHandCursor
+        {
+            get { return _owner.UseHandCursor; }
+            set { _owner.UseHandCursor = value; }
         }
     }
 }

@@ -124,7 +124,18 @@ namespace AdvancedControls.Controls
 
         #region 표준 TextBox 속성 전달
 
-        [Category("Appearance")]
+        private AdvTextBoxOptions _options;
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvTextBoxOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvTextBoxOptions(this)); }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue("")]
         [Description("내용이 비어 있을 때 흐리게 표시할 안내 문구입니다. 색은 테마를 따릅니다.")]
         public string Placeholder
@@ -456,6 +467,26 @@ namespace AdvancedControls.Controls
                 _inner.KeyUp -= InnerKeyUp;
             }
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>AdvTextBox가 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvTextBoxOptions : AdvOptions
+    {
+        private readonly AdvTextBox _owner;
+
+        internal AdvTextBoxOptions(AdvTextBox owner) : base(owner.Styling)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue("")]
+        [Description("내용이 비어 있을 때 흐리게 표시할 안내 문구입니다. 색은 테마를 따릅니다.")]
+        public string Placeholder
+        {
+            get { return _owner.Placeholder; }
+            set { _owner.Placeholder = value; }
         }
     }
 }

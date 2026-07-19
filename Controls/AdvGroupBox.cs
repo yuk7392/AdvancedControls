@@ -17,6 +17,16 @@ namespace AdvancedControls.Controls
     public class AdvGroupBox : AdvContainerBase
     {
         private readonly AdvHeaderAppearance _header = new AdvHeaderAppearance();
+        private AdvGroupBoxOptions _options;
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvGroupBoxOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvGroupBoxOptions(this)); }
+        }
 
         public AdvGroupBox()
         {
@@ -40,7 +50,7 @@ namespace AdvancedControls.Controls
         }
 
         /// <summary>머리글의 글꼴·색·정렬·높이·구분선·여백을 한데 모은 설정.</summary>
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("머리글의 모양과 배치입니다. 제목 글자는 Text 속성에 있습니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
         public AdvHeaderAppearance Header
@@ -154,6 +164,24 @@ namespace AdvancedControls.Controls
                 _header.LayoutChanged -= HeaderLayoutChanged;
             }
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>AdvGroupBox가 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvGroupBoxOptions : AdvOptions
+    {
+        private readonly AdvGroupBox _owner;
+
+        internal AdvGroupBoxOptions(AdvGroupBox owner) : base(owner.Styling)
+        {
+            _owner = owner;
+        }
+
+        [Description("머리글의 모양과 배치입니다. 제목 글자는 Text 속성에 있습니다.")]
+        public AdvHeaderAppearance Header
+        {
+            get { return _owner.Header; }
         }
     }
 }

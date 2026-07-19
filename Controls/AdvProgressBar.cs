@@ -22,6 +22,16 @@ namespace AdvancedControls.Controls
         private int _value;
         private bool _showPercentage;
         private readonly AdvAnimator _fillAnim;
+        private AdvProgressBarOptions _options;
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvProgressBarOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvProgressBarOptions(this)); }
+        }
 
         [Category("Behavior")]
         [Description("Value가 바뀔 때 발생합니다.")]
@@ -96,7 +106,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("가운데에 퍼센트를 표시할지 여부입니다.")]
         public bool ShowPercentage
@@ -269,6 +279,26 @@ namespace AdvancedControls.Controls
                 _fillAnim.Dispose();
             }
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>AdvProgressBar가 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvProgressBarOptions : AdvOptions
+    {
+        private readonly AdvProgressBar _owner;
+
+        internal AdvProgressBarOptions(AdvProgressBar owner) : base(owner.Styling)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(false)]
+        [Description("가운데에 퍼센트를 표시할지 여부입니다.")]
+        public bool ShowPercentage
+        {
+            get { return _owner.ShowPercentage; }
+            set { _owner.ShowPercentage = value; }
         }
     }
 }

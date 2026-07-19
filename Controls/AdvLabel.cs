@@ -31,6 +31,16 @@ namespace AdvancedControls.Controls
         private AdvLabelKind _kind = AdvLabelKind.Normal;
         private ContentAlignment _textAlign = ContentAlignment.MiddleLeft;
         private bool _wrap;
+        private AdvLabelOptions _options;
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvLabelOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvLabelOptions(this)); }
+        }
 
         public AdvLabel()
         {
@@ -52,6 +62,7 @@ namespace AdvancedControls.Controls
         /// </summary>
         [Browsable(true)]
         [EditorBrowsable(EditorBrowsableState.Always)]
+        [Category("Layout")]
         [DefaultValue(true)]
         [RefreshProperties(RefreshProperties.All)]
         [Description("내용에 맞춰 크기를 자동으로 맞출지 여부입니다.")]
@@ -61,7 +72,7 @@ namespace AdvancedControls.Controls
             set { base.AutoSize = value; }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvLabelKind.Normal)]
         [Description("글자의 역할입니다. 색은 테마에서 결정됩니다.")]
         public AdvLabelKind Kind
@@ -89,7 +100,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("폭을 넘는 글자를 줄바꿈할지 여부입니다. 켜면 AutoSize는 높이만 늘립니다.")]
         public bool Wrap
@@ -203,6 +214,34 @@ namespace AdvancedControls.Controls
             // 줄바꿈일 때는 폭이 바뀌면 필요한 높이도 바뀐다
             if (_wrap) AdjustSize();
             base.OnResize(e);
+        }
+    }
+
+    /// <summary>AdvLabel이 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvLabelOptions : AdvOptions
+    {
+        private readonly AdvLabel _owner;
+
+        internal AdvLabelOptions(AdvLabel owner) : base(owner.Styling)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(AdvLabelKind.Normal)]
+        [Description("글자의 역할입니다. 색은 테마에서 결정됩니다.")]
+        public AdvLabelKind Kind
+        {
+            get { return _owner.Kind; }
+            set { _owner.Kind = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("폭을 넘는 글자를 줄바꿈할지 여부입니다. 켜면 AutoSize는 높이만 늘립니다.")]
+        public bool Wrap
+        {
+            get { return _owner.Wrap; }
+            set { _owner.Wrap = value; }
         }
     }
 }

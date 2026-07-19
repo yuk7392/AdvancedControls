@@ -29,6 +29,16 @@ namespace AdvancedControls.Controls
         private string _format = "yyyy-MM-dd";
 
         private ToolStripDropDown _popup;
+        private AdvOptions _options;
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvOptions(Styling)); }
+        }
         private AdvCalendar _calendar;
 
         [Category("Behavior")]

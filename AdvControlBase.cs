@@ -116,7 +116,12 @@ namespace AdvancedControls
         /// CSS의 cursor: pointer에 대응한다. 데스크톱 관례는 화살표지만
         /// 이 라이브러리는 웹 감각을 목표로 하므로 기본으로 켠다.
         /// </summary>
-        [Category("Appearance")]
+        /// <remarks>
+        /// 여기서는 감춘다. <see cref="IsClickable"/>이 false인 컨트롤에서는 아무 효과가 없어
+        /// 속성 창에 보이면 사용자가 바꿔 보고 헤매기 때문이다.
+        /// 클릭으로 동작하는 컨트롤이 <c>new</c>로 다시 노출한다.
+        /// </remarks>
+        [Browsable(false)]
         [DefaultValue(true)]
         [Description("클릭할 수 있는 컨트롤 위에서 손 모양 커서를 보일지 여부입니다.")]
         public bool UseHandCursor
@@ -136,8 +141,11 @@ namespace AdvancedControls
             Cursor = _useHandCursor ? Cursors.Hand : Cursors.Default;
         }
 
-        /// <summary>모서리 반경·테두리 두께·전환 시간 등 이 컨트롤의 모양 설정.</summary>
-        [Category("Appearance")]
+        /// <summary>
+        /// 모서리 반경·테두리 두께·전환 시간 등 이 컨트롤의 모양 설정.
+        /// 속성 창에서는 AdvancedControlOptions 안에서만 보인다.
+        /// </summary>
+        [Browsable(false)]
         [Description("이 컨트롤의 모양 설정입니다. 펼쳐서 모서리별 반경 등을 조정합니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
         public AdvAppearance Styling
@@ -151,6 +159,7 @@ namespace AdvancedControls
         /// </summary>
         [Browsable(true)]
         [EditorBrowsable(EditorBrowsableState.Always)]
+        [Category("Layout")]          // 명시하지 않으면 Misc로 떨어져 다른 크기 속성과 떨어진다
         [DefaultValue(false)]
         [RefreshProperties(RefreshProperties.All)]
         [Description("내용에 맞춰 크기를 자동으로 맞출지 여부입니다.")]
