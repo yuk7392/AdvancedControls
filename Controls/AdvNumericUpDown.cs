@@ -15,21 +15,21 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ValueChanged")]
-    [DefaultProperty("Value")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 숫자 입력창입니다.")]
     public class AdvNumericUpDown : AdvControlBase
     {
         private const int SpinWidth = 18;
 
-        private AdvOptions _options;
+        private AdvNumericUpDownOptions _options;
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
         [Category(AdvCategory.Name)]
         [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public AdvOptions AdvancedControlOptions
+        public AdvNumericUpDownOptions AdvancedControlOptions
         {
-            get { return _options ?? (_options = new AdvOptions(Styling, Palette)); }
+            get { return _options ?? (_options = new AdvNumericUpDownOptions(this)); }
         }
 
         private readonly TextBox _editor;
@@ -89,7 +89,7 @@ namespace AdvancedControls.Controls
 
         #region 값
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(typeof(decimal), "0")]
         [Description("입력할 수 있는 최솟값입니다.")]
         public decimal Minimum
@@ -107,7 +107,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(typeof(decimal), "100")]
         [Description("입력할 수 있는 최댓값입니다.")]
         public decimal Maximum
@@ -124,7 +124,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(typeof(decimal), "0")]
         [Description("현재 값입니다. 최솟값~최댓값 범위로 잘립니다.")]
         public decimal Value
@@ -149,7 +149,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(typeof(decimal), "1")]
         [Description("증감 버튼과 방향키가 한 번에 더하거나 빼는 값입니다.")]
         public decimal Increment
@@ -158,7 +158,7 @@ namespace AdvancedControls.Controls
             set { _increment = value <= 0m ? 1m : value; }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(0)]
         [Description("소수점 아래 자릿수입니다.")]
         public int DecimalPlaces
@@ -175,7 +175,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("천 단위 구분 기호를 표시할지 여부입니다.")]
         public bool ThousandsSeparator
@@ -542,6 +542,66 @@ namespace AdvancedControls.Controls
                 _editor.KeyDown -= EditorKeyDown;
             }
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>AdvNumericUpDown이 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvNumericUpDownOptions : AdvOptions
+    {
+        private readonly AdvNumericUpDown _owner;
+
+        internal AdvNumericUpDownOptions(AdvNumericUpDown owner) : base(owner.Styling, owner.Palette)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(typeof(decimal), "0")]
+        [Description("입력할 수 있는 최솟값입니다.")]
+        public decimal Minimum
+        {
+            get { return _owner.Minimum; }
+            set { _owner.Minimum = value; }
+        }
+
+        [DefaultValue(typeof(decimal), "100")]
+        [Description("입력할 수 있는 최댓값입니다.")]
+        public decimal Maximum
+        {
+            get { return _owner.Maximum; }
+            set { _owner.Maximum = value; }
+        }
+
+        [DefaultValue(typeof(decimal), "0")]
+        [Description("현재 값입니다. 최솟값~최댓값 범위로 잘립니다.")]
+        public decimal Value
+        {
+            get { return _owner.Value; }
+            set { _owner.Value = value; }
+        }
+
+        [DefaultValue(typeof(decimal), "1")]
+        [Description("증감 버튼과 방향키가 한 번에 더하거나 빼는 값입니다.")]
+        public decimal Increment
+        {
+            get { return _owner.Increment; }
+            set { _owner.Increment = value; }
+        }
+
+        [DefaultValue(0)]
+        [Description("소수점 아래 자릿수입니다.")]
+        public int DecimalPlaces
+        {
+            get { return _owner.DecimalPlaces; }
+            set { _owner.DecimalPlaces = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("천 단위 구분 기호를 표시할지 여부입니다.")]
+        public bool ThousandsSeparator
+        {
+            get { return _owner.ThousandsSeparator; }
+            set { _owner.ThousandsSeparator = value; }
         }
     }
 }

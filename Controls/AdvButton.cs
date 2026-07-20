@@ -27,7 +27,7 @@ namespace AdvancedControls.Controls
         private const int ImageTextGap = 6;
 
         private AdvButtonKind _kind = AdvButtonKind.Filled;
-        private AdvContextColor _context = AdvContextColor.Default;
+        private Color _context = Color.Empty;
         private DialogResult _dialogResult = DialogResult.None;
         private bool _isDefault;
         private Image _image;
@@ -52,7 +52,7 @@ namespace AdvancedControls.Controls
 
         #region IButtonControl — 폼의 AcceptButton / CancelButton 지원
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(DialogResult.None)]
         [Description("이 버튼을 눌렀을 때 대화 상자가 돌려줄 결과입니다.")]
         public DialogResult DialogResult
@@ -115,9 +115,8 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("버튼의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
-        public AdvContextColor Context
+        [Description("버튼의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _context; }
             set
@@ -127,8 +126,10 @@ namespace AdvancedControls.Controls
                 Invalidate();
             }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(null)]
         [Description("버튼에 표시할 이미지입니다.")]
         public Image Image
@@ -143,7 +144,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(TextImageRelation.ImageBeforeText)]
         [Description("이미지와 글자를 어떻게 배치할지 정합니다.")]
         public TextImageRelation TextImageRelation
@@ -315,7 +316,7 @@ namespace AdvancedControls.Controls
 
             int bw = EffectiveBorderWidth;
             AdvFrameRenderer.Draw(g, bounds, theme, corners, bw, fill, fillEnd, border,
-                                  CurrentGlow, CurrentElevation, EffectiveBorderDash);
+                                  CurrentGlow, CurrentElevation, EffectiveBorderDash, EffectiveGradientAngle);
 
             // 기본 버튼(Enter로 눌리는 버튼)은 테두리를 한 겹 더 그려 구분한다
             if (_isDefault && Enabled)
@@ -323,7 +324,7 @@ namespace AdvancedControls.Controls
                 var ring = Rectangle.Inflate(bounds, -(bw + 1), -(bw + 1));
                 if (ring.Width > 0 && ring.Height > 0)
                 {
-                    var ctxPal = theme.ResolveContext(_context);
+                    var ctxPal = AdvContextPalette.Resolve(_context, theme);
                     using (var path = AdvGraphics.CreateRoundedRect(ring, corners.Clamp(0, int.MaxValue)))
                     using (var pen = new Pen(_kind == AdvButtonKind.Filled ? ctxPal.OnSolid : ctxPal.Solid, 1))
                         g.DrawPath(pen, path);
@@ -378,9 +379,9 @@ namespace AdvancedControls.Controls
                 return;
             }
 
-            var p = theme.ResolveContext(_context);
-            // Default는 ResolveContext가 Accent 세트를 그대로 돌려주므로 기존 동작과 동일하다.
-            bool neutral = _context == AdvContextColor.Default;
+            var p = AdvContextPalette.Resolve(_context, theme);
+            // 색을 비우면 테마 강조색(Accent 세트)을 그대로 쓴다.
+            bool neutral = _context.IsEmpty;
             float t = HoverAmount;
 
             switch (_kind)
@@ -389,8 +390,8 @@ namespace AdvancedControls.Controls
                     fill = IsPressed
                          ? p.SolidPressed
                          : AdvGraphics.Blend(p.Solid, p.SolidHover, t);
-                    // 그라데이션 끝색은 Accent(Primary/Default)에만 있다.
-                    fillEnd = neutral || _context == AdvContextColor.Primary ? theme.AccentGradientEnd : Color.Empty;
+                    // 그라데이션 끝색은 테마 강조색을 따를 때(색 비움)만 쓴다.
+                    fillEnd = neutral ? theme.AccentGradientEnd : Color.Empty;
                     border = fill;
                     foreColor = p.OnSolid;
                     break;
@@ -479,13 +480,14 @@ namespace AdvancedControls.Controls
             set { _owner.Kind = value; }
         }
 
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("버튼의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
-        public AdvContextColor Context
+        [Description("버튼의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
         }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
 
         [DefaultValue(true)]
         [Description("이 버튼 위에서 손 모양 커서를 보일지 여부입니다.")]
@@ -493,6 +495,30 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.UseHandCursor; }
             set { _owner.UseHandCursor = value; }
+        }
+
+        [DefaultValue(null)]
+        [Description("버튼에 표시할 이미지입니다.")]
+        public Image Image
+        {
+            get { return _owner.Image; }
+            set { _owner.Image = value; }
+        }
+
+        [DefaultValue(TextImageRelation.ImageBeforeText)]
+        [Description("이미지와 글자를 어떻게 배치할지 정합니다.")]
+        public TextImageRelation TextImageRelation
+        {
+            get { return _owner.TextImageRelation; }
+            set { _owner.TextImageRelation = value; }
+        }
+
+        [DefaultValue(DialogResult.None)]
+        [Description("이 버튼을 눌렀을 때 대화 상자가 돌려줄 결과입니다.")]
+        public DialogResult DialogResult
+        {
+            get { return _owner.DialogResult; }
+            set { _owner.DialogResult = value; }
         }
     }
 }

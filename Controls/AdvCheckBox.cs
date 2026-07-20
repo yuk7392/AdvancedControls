@@ -10,14 +10,15 @@ namespace AdvancedControls.Controls
 {
     [ToolboxItem(true)]
     [DefaultEvent("CheckedChanged")]
-    [DefaultProperty("Checked")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 체크박스입니다.")]
     public class AdvCheckBox : AdvToggleBase
     {
         private bool _threeState;
         private CheckState _checkState = CheckState.Unchecked;
+        private AdvCheckBoxOptions _options;
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("눌렀을 때 '설정 안 함' 상태를 거칠지 여부입니다.")]
         public bool ThreeState
@@ -34,7 +35,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(CheckState.Unchecked)]
         [Description("체크 상태입니다. Indeterminate는 '설정 안 함'입니다.")]
         public CheckState CheckState
@@ -63,6 +64,15 @@ namespace AdvancedControls.Controls
         {
             var handler = CheckStateChanged;
             if (handler != null) handler(this, e);
+        }
+
+        /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public new AdvCheckBoxOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvCheckBoxOptions(this)); }
         }
 
         /// <summary>
@@ -178,6 +188,34 @@ namespace AdvancedControls.Controls
         private static PointF Lerp(PointF a, PointF b, float t)
         {
             return new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
+        }
+    }
+
+    /// <summary>AdvCheckBox가 고유하게 추가한 속성. 공통 속성은 AdvToggleOptions에서 물려받는다.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvCheckBoxOptions : AdvToggleOptions
+    {
+        private readonly AdvCheckBox _owner;
+
+        internal AdvCheckBoxOptions(AdvCheckBox owner) : base(owner)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(false)]
+        [Description("눌렀을 때 '설정 안 함' 상태를 거칠지 여부입니다.")]
+        public bool ThreeState
+        {
+            get { return _owner.ThreeState; }
+            set { _owner.ThreeState = value; }
+        }
+
+        [DefaultValue(CheckState.Unchecked)]
+        [Description("체크 상태입니다. Indeterminate는 '설정 안 함'입니다.")]
+        public CheckState CheckState
+        {
+            get { return _owner.CheckState; }
+            set { _owner.CheckState = value; }
         }
     }
 }

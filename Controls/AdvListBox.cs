@@ -25,7 +25,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("SelectedIndexChanged")]
-    [DefaultProperty("Items")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 목록 상자입니다.")]
     public class AdvListBox : AdvControlBase
     {
@@ -34,15 +34,15 @@ namespace AdvancedControls.Controls
         private readonly Panel _viewport;
         private readonly ListCore _core;
         private readonly AdvScrollBar _scrollBar;
-        private AdvOptions _options;
+        private AdvListBoxOptions _options;
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
         [Category(AdvCategory.Name)]
         [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public AdvOptions AdvancedControlOptions
+        public AdvListBoxOptions AdvancedControlOptions
         {
-            get { return _options ?? (_options = new AdvOptions(Styling, Palette)); }
+            get { return _options ?? (_options = new AdvListBoxOptions(this)); }
         }
 
         [Category("Behavior")]
@@ -77,7 +77,7 @@ namespace AdvancedControls.Controls
             get { return new Size(200, 140); }
         }
 
-        [Category("Data")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("목록에 표시할 항목입니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
         [MergableProperty(false)]
@@ -86,7 +86,7 @@ namespace AdvancedControls.Controls
             get { return _itemsWrapper; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvSelectionMode.One)]
         [Description("한 개만 고를지, 여러 개를 고를지 정합니다.")]
         public AdvSelectionMode SelectionMode
@@ -660,6 +660,32 @@ namespace AdvancedControls.Controls
                 _owner.RefreshLayout();
                 _owner.Invalidate();
             }
+        }
+    }
+
+    /// <summary>AdvListBox가 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvListBoxOptions : AdvOptions
+    {
+        private readonly AdvListBox _owner;
+
+        internal AdvListBoxOptions(AdvListBox owner) : base(owner.Styling, owner.Palette)
+        {
+            _owner = owner;
+        }
+
+        [Description("목록에 표시할 항목입니다.")]
+        public AdvListBox.ObjectCollection Items
+        {
+            get { return _owner.Items; }
+        }
+
+        [DefaultValue(AdvSelectionMode.One)]
+        [Description("한 개만 고를지, 여러 개를 고를지 정합니다.")]
+        public AdvSelectionMode SelectionMode
+        {
+            get { return _owner.SelectionMode; }
+            set { _owner.SelectionMode = value; }
         }
     }
 }

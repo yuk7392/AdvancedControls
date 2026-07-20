@@ -16,10 +16,12 @@ namespace AdvancedControls.Rendering
         /// <param name="glow">포커스 글로우. null이면 그리지 않는다.</param>
         /// <param name="elevation">떠 있는 느낌을 주는 그림자. 글로우보다 아래에 깔린다.</param>
         /// <param name="dash">테두리 선 모양(CSS border-style).</param>
+        /// <param name="gradientAngle">채움 그라데이션 각도. NaN이면 테마 값을 쓴다.</param>
         public static void Draw(Graphics g, Rectangle bounds, AdvTheme theme, AdvCorners corners,
                                 int borderWidth, Color fill, Color fillEnd, Color border,
                                 AdvShadow glow, AdvShadow elevation = null,
-                                AdvBorderDash dash = AdvBorderDash.Solid)
+                                AdvBorderDash dash = AdvBorderDash.Solid,
+                                float gradientAngle = float.NaN)
         {
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
@@ -38,7 +40,8 @@ namespace AdvancedControls.Rendering
             {
                 if (fill.A > 0)
                 {
-                    using (var brush = AdvGraphics.CreateFillBrush(inner, fill, fillEnd, theme.GradientAngle))
+                    float angle = float.IsNaN(gradientAngle) ? theme.GradientAngle : gradientAngle;
+                    using (var brush = AdvGraphics.CreateFillBrush(inner, fill, fillEnd, angle))
                         g.FillPath(brush, path);
                 }
 

@@ -266,6 +266,12 @@ namespace AdvancedControls
             get { return _appearance.BorderDash; }
         }
 
+        /// <summary>채움 그라데이션 각도. 컨트롤이 지정하지 않았으면 테마 값을 따른다.</summary>
+        protected float EffectiveGradientAngle
+        {
+            get { return _appearance.ResolveGradientAngle(EffectiveTheme); }
+        }
+
         private void OnAppearanceChanged(object sender, EventArgs e)
         {
             SyncAnimationDuration();
@@ -392,7 +398,7 @@ namespace AdvancedControls
                 // 그런데도 여백을 예약하면 순수 손해다 — 진행 막대는 높이 14 중 6px(43%)을 잃었다
                 if (!GetStyle(ControlStyles.Selectable)) return 0;
 
-                var glow = EffectiveTheme.FocusGlow;
+                var glow = _appearance.ResolveGlow(EffectiveTheme);
                 return glow != null && glow.IsVisible ? glow.Blur : 0;
             }
         }
@@ -406,7 +412,7 @@ namespace AdvancedControls
         /// <summary>현재 상태에서 그려야 할 그림자. Elevated가 아니면 null.</summary>
         protected AdvShadow CurrentElevation
         {
-            get { return _appearance.Elevated ? EffectiveTheme.Elevation : null; }
+            get { return _appearance.Elevated ? _appearance.ResolveElevation(EffectiveTheme) : null; }
         }
 
         /// <summary>
@@ -468,7 +474,7 @@ namespace AdvancedControls
                 if (!Enabled || !ShowsFocusVisual || !ShowFocusCues) return null;
                 if (!_appearance.ShowFocusGlow) return null;
 
-                var glow = EffectiveTheme.FocusGlow;
+                var glow = _appearance.ResolveGlow(EffectiveTheme);
                 if (glow == null || !glow.IsVisible) return null;
 
                 // 전환 중에는 알파를 진행도에 맞춰 줄여 서서히 나타나게 한다

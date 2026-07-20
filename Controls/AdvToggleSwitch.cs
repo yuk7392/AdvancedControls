@@ -10,7 +10,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("CheckedChanged")]
-    [DefaultProperty("Checked")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 켬/끔 스위치입니다.")]
     public class AdvToggleSwitch : AdvToggleBase
     {

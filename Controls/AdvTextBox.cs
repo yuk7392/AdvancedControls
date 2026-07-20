@@ -15,7 +15,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("TextChanged")]
-    [DefaultProperty("Text")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 입력창입니다.")]
     public class AdvTextBox : AdvControlBase
     {
@@ -159,7 +159,7 @@ namespace AdvancedControls.Controls
             set { if (_inner != null) _inner.Text = value ?? string.Empty; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("입력을 막고 읽기 전용으로 만들지 여부입니다.")]
         public bool ReadOnly
@@ -174,7 +174,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("여러 줄을 입력받을지 여부입니다. 켜면 높이를 직접 지정할 수 있습니다.")]
         public bool Multiline
@@ -189,7 +189,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(32767)]
         [Description("입력할 수 있는 최대 글자 수입니다.")]
         public int MaxLength
@@ -198,7 +198,7 @@ namespace AdvancedControls.Controls
             set { _inner.MaxLength = value; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue('\0')]
         [Description("입력한 글자 대신 표시할 문자입니다. 비워 두면 글자가 그대로 보입니다.")]
         public char PasswordChar
@@ -207,7 +207,7 @@ namespace AdvancedControls.Controls
             set { _inner.PasswordChar = value; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("OS가 정한 암호 문자를 쓸지 여부입니다. 켜면 PasswordChar보다 우선합니다.")]
         public bool UseSystemPasswordChar
@@ -216,7 +216,7 @@ namespace AdvancedControls.Controls
             set { _inner.UseSystemPasswordChar = value; }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(HorizontalAlignment.Left)]
         [Description("글자를 왼쪽·가운데·오른쪽 중 어디에 맞출지입니다.")]
         public HorizontalAlignment TextAlign
@@ -225,7 +225,7 @@ namespace AdvancedControls.Controls
             set { _inner.TextAlign = value; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(ScrollBars.None)]
         [Description("여러 줄일 때 표시할 스크롤 막대입니다. Multiline이 꺼져 있으면 무시됩니다.")]
         public ScrollBars ScrollBars
@@ -487,6 +487,62 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.Placeholder; }
             set { _owner.Placeholder = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("입력을 막고 읽기 전용으로 만들지 여부입니다.")]
+        public bool ReadOnly
+        {
+            get { return _owner.ReadOnly; }
+            set { _owner.ReadOnly = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("여러 줄을 입력받을지 여부입니다. 켜면 높이를 직접 지정할 수 있습니다.")]
+        public bool Multiline
+        {
+            get { return _owner.Multiline; }
+            set { _owner.Multiline = value; }
+        }
+
+        [DefaultValue(32767)]
+        [Description("입력할 수 있는 최대 글자 수입니다.")]
+        public int MaxLength
+        {
+            get { return _owner.MaxLength; }
+            set { _owner.MaxLength = value; }
+        }
+
+        [DefaultValue('\0')]
+        [Description("입력한 글자 대신 표시할 문자입니다. 비워 두면 글자가 그대로 보입니다.")]
+        public char PasswordChar
+        {
+            get { return _owner.PasswordChar; }
+            set { _owner.PasswordChar = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("OS가 정한 암호 문자를 쓸지 여부입니다. 켜면 PasswordChar보다 우선합니다.")]
+        public bool UseSystemPasswordChar
+        {
+            get { return _owner.UseSystemPasswordChar; }
+            set { _owner.UseSystemPasswordChar = value; }
+        }
+
+        [DefaultValue(HorizontalAlignment.Left)]
+        [Description("글자를 왼쪽·가운데·오른쪽 중 어디에 맞출지입니다.")]
+        public HorizontalAlignment TextAlign
+        {
+            get { return _owner.TextAlign; }
+            set { _owner.TextAlign = value; }
+        }
+
+        [DefaultValue(ScrollBars.None)]
+        [Description("여러 줄일 때 표시할 스크롤 막대입니다. Multiline이 꺼져 있으면 무시됩니다.")]
+        public ScrollBars ScrollBars
+        {
+            get { return _owner.ScrollBars; }
+            set { _owner.ScrollBars = value; }
         }
     }
 }

@@ -21,7 +21,7 @@ namespace AdvancedControls.Controls
     }
 
     /// <summary>
-    /// 콘텐츠 로딩 중 자리를 채우는 스켈레톤 블록. Bootstrap의 <c>.placeholder</c>에 대응한다.
+    /// 콘텐츠 로딩 중 자리를 채우는 스켈레톤 블록.
     /// glow/wave 애니메이션은 <see cref="AdvAnimator"/>의 loop 모드로 돈다.
     /// </summary>
     [ToolboxItem(true)]

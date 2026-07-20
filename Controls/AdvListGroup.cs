@@ -23,12 +23,12 @@ namespace AdvancedControls.Controls
 
     /// <summary>
     /// 선택 가능한 항목들의 세로 목록. 항목 우측에 배지를 달 수 있고, 바깥 테두리 없는
-    /// flush 모드를 지원한다. Bootstrap의 <c>.list-group</c>에 대응한다.
+    /// flush 모드를 지원한다.
     /// (스크롤은 지원하지 않는다 — 항목이 넘치면 잘린다. 긴 목록은 <see cref="AdvListBox"/>를 쓴다.)
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ItemClicked")]
-    [DefaultProperty("Items")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("선택 가능한 항목 목록입니다.")]
     public class AdvListGroup : AdvControlBase
     {
@@ -43,7 +43,7 @@ namespace AdvancedControls.Controls
         private int _selectedIndex = -1;
         private int _hover = -1;
         private int _focusRow = -1;
-        private AdvContextColor _context = AdvContextColor.Default;
+        private Color _context = Color.Empty;
         private AdvListGroupOptions _options;
 
         public event EventHandler<AdvListGroupItemEventArgs> ItemClicked;
@@ -68,7 +68,7 @@ namespace AdvancedControls.Controls
             get { return true; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("목록 항목의 글자들입니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string[] Items
@@ -83,7 +83,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("각 항목 우측에 표시할 배지 글자입니다(항목과 같은 인덱스). 비우면 배지가 없습니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string[] Badges
@@ -92,7 +92,7 @@ namespace AdvancedControls.Controls
             set { _badges = value ?? new string[0]; MeasureBadges(); Invalidate(); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("바깥 테두리를 없애고 항목 사이만 구분선으로 나눕니다.")]
         public bool Flush
@@ -102,15 +102,16 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("선택된 항목의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
-        public AdvContextColor Context
+        [Description("선택된 항목의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _context; }
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(true)]
         [Description("항목을 클릭했을 때 선택 상태로 유지할지 여부입니다. 끄면 링크처럼 동작합니다.")]
         public bool SelectionEnabled
@@ -157,7 +158,7 @@ namespace AdvancedControls.Controls
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = EffectiveTheme;
-            var palette = theme.ResolveContext(_context);
+            var palette = AdvContextPalette.Resolve(_context, theme);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -170,7 +171,7 @@ namespace AdvancedControls.Controls
             AdvFrameRenderer.Draw(g, frame, theme, EffectiveCorners, _flush ? 0 : bw,
                                   theme.Surface, theme.SurfaceGradientEnd,
                                   _flush ? Color.Empty : theme.Border,
-                                  null, CurrentElevation, EffectiveBorderDash);
+                                  null, CurrentElevation, EffectiveBorderDash, EffectiveGradientAngle);
 
             int inset = _flush ? 0 : bw;
             int rowH = RowHeight;
@@ -404,12 +405,43 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("선택된 항목의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("선택된 항목의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
+        }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
+
+        [Description("목록 항목의 글자들입니다.")]
+        public string[] Items
+        {
+            get { return _owner.Items; }
+            set { _owner.Items = value; }
+        }
+
+        [Description("각 항목 우측에 표시할 배지 글자입니다(항목과 같은 인덱스). 비우면 배지가 없습니다.")]
+        public string[] Badges
+        {
+            get { return _owner.Badges; }
+            set { _owner.Badges = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("바깥 테두리를 없애고 항목 사이만 구분선으로 나눕니다.")]
+        public bool Flush
+        {
+            get { return _owner.Flush; }
+            set { _owner.Flush = value; }
+        }
+
+        [DefaultValue(true)]
+        [Description("항목을 클릭했을 때 선택 상태로 유지할지 여부입니다. 끄면 링크처럼 동작합니다.")]
+        public bool SelectionEnabled
+        {
+            get { return _owner.SelectionEnabled; }
+            set { _owner.SelectionEnabled = value; }
         }
     }
 }

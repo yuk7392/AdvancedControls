@@ -11,7 +11,6 @@ namespace AdvancedControls.Controls
     /// <summary>
     /// 작은 X 아이콘 버튼. 알림·모달·토스트 등을 닫는 데 쓴다.
     /// 평소에는 흐린 X만 보이고 호버 시 X가 진해지며 옅은 원형 배경이 생긴다.
-    /// Bootstrap의 <c>.btn-close</c>에 대응한다.
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("Click")]

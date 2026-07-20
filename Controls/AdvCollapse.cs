@@ -8,12 +8,11 @@ namespace AdvancedControls.Controls
 {
     /// <summary>
     /// 트리거로 높이가 0과 콘텐츠 높이 사이를 부드럽게 오가며 펼쳐지고 접히는 컨테이너.
-    /// 자식은 그대로 두고 컨테이너 높이만 줄여 클리핑한다. Bootstrap의 <c>.collapse</c>에
-    /// 대응하며 아코디언의 기반 프리미티브다.
+    /// 자식은 그대로 두고 컨테이너 높이만 줄여 클리핑한다. 아코디언의 기반 프리미티브다.
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("CollapsedChanged")]
-    [DefaultProperty("Collapsed")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("높이 애니메이션으로 펼치고 접는 컨테이너입니다.")]
     public class AdvCollapse : AdvContainerBase
     {
@@ -37,7 +36,7 @@ namespace AdvancedControls.Controls
             get { return new Size(200, 100); }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("접힌 상태인지 여부입니다. 바꾸면 애니메이션으로 전환됩니다.")]
         public bool Collapsed
@@ -68,7 +67,7 @@ namespace AdvancedControls.Controls
         /// 펼쳤을 때의 높이. 0이면 처음 접힐 때의 실제 높이를 자동으로 쓴다.
         /// 디자이너에서 명시적으로 지정할 수도 있다.
         /// </summary>
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(0)]
         [Description("펼쳤을 때의 높이입니다. 0이면 첫 접힘 시점의 높이를 자동으로 사용합니다.")]
         public int ExpandedHeight
@@ -150,8 +149,27 @@ namespace AdvancedControls.Controls
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class AdvCollapseOptions : AdvOptions
     {
+        private readonly AdvCollapse _owner;
+
         internal AdvCollapseOptions(AdvCollapse owner) : base(owner.Styling, owner.Palette)
         {
+            _owner = owner;
+        }
+
+        [DefaultValue(false)]
+        [Description("접힌 상태인지 여부입니다. 바꾸면 애니메이션으로 전환됩니다.")]
+        public bool Collapsed
+        {
+            get { return _owner.Collapsed; }
+            set { _owner.Collapsed = value; }
+        }
+
+        [DefaultValue(0)]
+        [Description("펼쳤을 때의 높이입니다. 0이면 첫 접힘 시점의 높이를 자동으로 사용합니다.")]
+        public int ExpandedHeight
+        {
+            get { return _owner.ExpandedHeight; }
+            set { _owner.ExpandedHeight = value; }
         }
     }
 }

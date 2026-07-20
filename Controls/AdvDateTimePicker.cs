@@ -15,7 +15,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ValueChanged")]
-    [DefaultProperty("Value")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 날짜 선택 컨트롤입니다.")]
     public class AdvDateTimePicker : AdvControlBase
     {
@@ -29,15 +29,15 @@ namespace AdvancedControls.Controls
         private string _format = "yyyy-MM-dd";
 
         private ToolStripDropDown _popup;
-        private AdvOptions _options;
+        private AdvDateTimePickerOptions _options;
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
         [Category(AdvCategory.Name)]
         [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public AdvOptions AdvancedControlOptions
+        public AdvDateTimePickerOptions AdvancedControlOptions
         {
-            get { return _options ?? (_options = new AdvOptions(Styling, Palette)); }
+            get { return _options ?? (_options = new AdvDateTimePickerOptions(this)); }
         }
         private AdvCalendar _calendar;
 
@@ -60,7 +60,7 @@ namespace AdvancedControls.Controls
             get { return new Padding(8, 4, 8, 4); }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("선택한 날짜입니다.")]
         public DateTime Value
         {
@@ -82,7 +82,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("고를 수 있는 가장 이른 날짜입니다.")]
         public DateTime MinDate
         {
@@ -98,7 +98,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("고를 수 있는 가장 늦은 날짜입니다.")]
         public DateTime MaxDate
         {
@@ -113,7 +113,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue("yyyy-MM-dd")]
         [Description("날짜를 보여줄 형식입니다.")]
         public string Format
@@ -369,6 +369,50 @@ namespace AdvancedControls.Controls
                 _calendar = null;
             }
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>AdvDateTimePicker가 추가한 속성.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvDateTimePickerOptions : AdvOptions
+    {
+        private readonly AdvDateTimePicker _owner;
+
+        internal AdvDateTimePickerOptions(AdvDateTimePicker owner) : base(owner.Styling, owner.Palette)
+        {
+            _owner = owner;
+        }
+
+        [Description("선택한 날짜입니다.")]
+        public DateTime Value
+        {
+            get { return _owner.Value; }
+            set { _owner.Value = value; }
+        }
+        public bool ShouldSerializeValue() { return _owner.ShouldSerializeValue(); }
+
+        [Description("고를 수 있는 가장 이른 날짜입니다.")]
+        public DateTime MinDate
+        {
+            get { return _owner.MinDate; }
+            set { _owner.MinDate = value; }
+        }
+        public bool ShouldSerializeMinDate() { return _owner.ShouldSerializeMinDate(); }
+
+        [Description("고를 수 있는 가장 늦은 날짜입니다.")]
+        public DateTime MaxDate
+        {
+            get { return _owner.MaxDate; }
+            set { _owner.MaxDate = value; }
+        }
+        public bool ShouldSerializeMaxDate() { return _owner.ShouldSerializeMaxDate(); }
+
+        [DefaultValue("yyyy-MM-dd")]
+        [Description("날짜를 보여줄 형식입니다.")]
+        public string Format
+        {
+            get { return _owner.Format; }
+            set { _owner.Format = value; }
         }
     }
 }

@@ -84,9 +84,8 @@ namespace AdvancedControls.Controls
         /// <summary>
         /// 도형(체크 상자·원) 대신 눌리는 버튼 모양으로 그릴지 여부.
         /// 켜짐이면 강조색으로 채운 버튼, 꺼짐이면 테두리만 있는 버튼으로 보인다.
-        /// Bootstrap의 버튼형 체크박스(btn-check)에 대응한다.
         /// </summary>
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("버튼처럼 그릴지 여부입니다. 켜면 도형 대신 눌리는 버튼 모양이 됩니다.")]
         public bool ButtonStyle
@@ -159,7 +158,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("체크 여부입니다.")]
         public bool Checked
@@ -439,9 +438,12 @@ namespace AdvancedControls.Controls
         }
     }
 
-    /// <summary>체크박스·라디오·스위치가 추가한 속성.</summary>
+    /// <summary>
+    /// 체크박스·라디오·스위치가 공통으로 추가한 속성.
+    /// 파생 컨트롤이 고유 속성을 더 내놓을 때는(예: AdvCheckBoxOptions) 이 클래스를 상속해 늘린다.
+    /// </summary>
     [TypeConverter(typeof(ExpandableObjectConverter))]
-    public sealed class AdvToggleOptions : AdvOptions
+    public class AdvToggleOptions : AdvOptions
     {
         private readonly AdvToggleBase _owner;
 
@@ -454,6 +456,22 @@ namespace AdvancedControls.Controls
         public AdvGlyphSettings Glyph
         {
             get { return _owner.Glyph; }
+        }
+
+        [DefaultValue(false)]
+        [Description("버튼처럼 그릴지 여부입니다. 켜면 도형 대신 눌리는 버튼 모양이 됩니다.")]
+        public bool ButtonStyle
+        {
+            get { return _owner.ButtonStyle; }
+            set { _owner.ButtonStyle = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("체크 여부입니다.")]
+        public bool Checked
+        {
+            get { return _owner.Checked; }
+            set { _owner.Checked = value; }
         }
 
         [DefaultValue(true)]

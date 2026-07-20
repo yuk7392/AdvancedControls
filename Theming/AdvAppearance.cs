@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Drawing;
 
 namespace AdvancedControls.Theming
 {
@@ -32,15 +33,27 @@ namespace AdvancedControls.Theming
         private AdvCorners _corners = new AdvCorners(-1);
         private int _borderWidth = -1;
         private int _transitionDuration = -1;
+        private float _gradientAngle = -1f;
         private bool _showFocusGlow = true;
         private bool _elevated;
         private AdvBorderDash _borderDash = AdvBorderDash.Solid;
+
+        // 그림자·글로우 커스터마이즈. Custom을 켜야 적용되고, 끄면 테마 값을 따른다.
+        private readonly AdvShadowSettings _shadow = new AdvShadowSettings(Color.FromArgb(60, 0, 0, 0), 6, 0, 3);
+        private readonly AdvShadowSettings _glow = new AdvShadowSettings(Color.FromArgb(120, 37, 99, 235), 4, 0, 0);
 
         /// <summary>값이 바뀌어 다시 그려야 할 때 발생한다.</summary>
         internal event EventHandler Changed;
 
         /// <summary>값이 바뀌어 자식 배치까지 다시 계산해야 할 때 발생한다.</summary>
         internal event EventHandler LayoutChanged;
+
+        public AdvAppearance()
+        {
+            // 번짐·오프셋이 바뀌면 여백(크기)도 달라지므로 레이아웃 갱신으로 취급한다.
+            _shadow.Changed += (s, e) => RaiseLayout();
+            _glow.Changed += (s, e) => RaiseLayout();
+        }
 
         [DefaultValue(AdvThemeMode.Inherit)]
         [Description("이 컨트롤이 따를 테마입니다. Inherit이면 전역 테마를 따릅니다.")]
@@ -64,6 +77,26 @@ namespace AdvancedControls.Theming
                 if (_corners == value) return;
                 _corners = value;
                 RaiseChanged();
+            }
+        }
+
+        /// <summary>네 모서리를 한꺼번에 맞추는 지름길. 실제 값은 <see cref="Corners"/>에 저장된다.</summary>
+        [DefaultValue(-1)]
+        [RefreshProperties(RefreshProperties.All)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Description("네 모서리를 한꺼번에 맞추는 반경입니다. -1이면 테마 값을 따릅니다. 모서리마다 다르면 -1로 보입니다.")]
+        public int Radius
+        {
+            get
+            {
+                var c = _corners;
+                return c.TopLeft == c.TopRight && c.TopRight == c.BottomRight && c.BottomRight == c.BottomLeft
+                    ? c.TopLeft : -1;
+            }
+            set
+            {
+                if (value < -1) value = -1;
+                Corners = new AdvCorners(value);
             }
         }
 
@@ -91,6 +124,19 @@ namespace AdvancedControls.Theming
                 if (value < -1) value = -1;
                 if (_transitionDuration == value) return;
                 _transitionDuration = value;
+                RaiseChanged();
+            }
+        }
+
+        [DefaultValue(-1f)]
+        [Description("채움 그라데이션의 각도(도)입니다. -1이면 테마 값을 따릅니다. 90이면 위에서 아래로 흐릅니다. Palette에서 그라데이션 끝색을 지정했을 때 보입니다.")]
+        public float GradientAngle
+        {
+            get { return _gradientAngle; }
+            set
+            {
+                if (_gradientAngle == value) return;
+                _gradientAngle = value;
                 RaiseChanged();
             }
         }
@@ -124,7 +170,7 @@ namespace AdvancedControls.Theming
         }
 
         [DefaultValue(AdvBorderDash.Solid)]
-        [Description("테두리 선 모양입니다. CSS의 border-style에 해당합니다.")]
+        [Description("테두리 선 모양입니다.")]
         public AdvBorderDash BorderDash
         {
             get { return _borderDash; }
@@ -136,13 +182,47 @@ namespace AdvancedControls.Theming
             }
         }
 
+        /// <summary>그림자를 테마 대신 직접 지정한다. Custom을 켜야 적용된다.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        [Description("그림자 색·번짐·오프셋을 직접 지정합니다. 펼쳐서 Custom을 켜면 Elevated일 때 적용됩니다.")]
+        public AdvShadowSettings Shadow
+        {
+            get { return _shadow; }
+        }
+
+        /// <summary>포커스 글로우를 테마 대신 직접 지정한다. Custom을 켜야 적용된다.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        [Description("포커스 글로우 색·번짐·오프셋을 직접 지정합니다. 펼쳐서 Custom을 켜면 포커스 시 적용됩니다.")]
+        public AdvShadowSettings Glow
+        {
+            get { return _glow; }
+        }
+
         /// <summary>그림자가 잘리지 않도록 각 변에 비워 둘 여백.</summary>
         public int ResolveShadowPadding(AdvTheme theme)
         {
             if (!_elevated) return 0;
 
-            var s = theme.Elevation;
+            var s = ResolveElevation(theme);
             return s != null && s.IsVisible ? s.Blur + Math.Abs(s.OffsetY) : 0;
+        }
+
+        /// <summary>Custom이 켜져 있으면 컨트롤 지정 그림자를, 아니면 테마 그림자를 돌려준다.</summary>
+        public AdvShadow ResolveElevation(AdvTheme theme)
+        {
+            return _shadow.Resolve(theme.Elevation);
+        }
+
+        /// <summary>Custom이 켜져 있으면 컨트롤 지정 글로우를, 아니면 테마 글로우를 돌려준다.</summary>
+        public AdvShadow ResolveGlow(AdvTheme theme)
+        {
+            return _glow.Resolve(theme.FocusGlow);
+        }
+
+        /// <summary>그라데이션 각도. -1(미지정)이면 테마 값을 따른다.</summary>
+        public float ResolveGradientAngle(AdvTheme theme)
+        {
+            return _gradientAngle < 0f ? theme.GradientAngle : _gradientAngle;
         }
 
         /// <summary>디자이너가 기본값일 때 코드를 생성하지 않도록 알려준다.</summary>

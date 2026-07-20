@@ -23,11 +23,11 @@ namespace AdvancedControls.Controls
 
     /// <summary>
     /// 현재 위치까지의 경로를 구분자로 이은 가로 링크 목록. 마지막 항목은 링크가 아닌
-    /// 현재 페이지 글자다. Bootstrap의 <c>.breadcrumb</c>에 대응한다.
+    /// 현재 페이지 글자다.
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ItemClicked")]
-    [DefaultProperty("Items")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("경로를 구분자로 이어 보여주는 브레드크럼입니다.")]
     public class AdvBreadcrumb : AdvControlBase
     {
@@ -59,7 +59,7 @@ namespace AdvancedControls.Controls
             get { return true; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("경로 항목들입니다. 마지막 항목은 현재 위치(비링크)로 표시됩니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string[] Items
@@ -74,7 +74,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(" / ")]
         [Description("항목 사이에 놓는 구분자입니다.")]
         public string Separator
@@ -304,8 +304,26 @@ namespace AdvancedControls.Controls
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class AdvBreadcrumbOptions : AdvOptions
     {
+        private readonly AdvBreadcrumb _owner;
+
         internal AdvBreadcrumbOptions(AdvBreadcrumb owner) : base(owner.Styling, owner.Palette)
         {
+            _owner = owner;
+        }
+
+        [Description("경로 항목들입니다. 마지막 항목은 현재 위치(비링크)로 표시됩니다.")]
+        public string[] Items
+        {
+            get { return _owner.Items; }
+            set { _owner.Items = value; }
+        }
+
+        [DefaultValue(" / ")]
+        [Description("항목 사이에 놓는 구분자입니다.")]
+        public string Separator
+        {
+            get { return _owner.Separator; }
+            set { _owner.Separator = value; }
         }
     }
 }

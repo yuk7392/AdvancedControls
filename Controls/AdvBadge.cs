@@ -9,18 +9,17 @@ using AdvancedControls.Theming;
 namespace AdvancedControls.Controls
 {
     /// <summary>
-    /// 작은 알림/카운트 배지. 컨텍스트 색으로 채운 알약 또는 둥근 사각형에 짧은 글자를 담는다.
-    /// Bootstrap의 <c>.badge</c>에 대응한다.
+    /// 작은 알림/카운트 배지. 강조 색으로 채운 알약 또는 둥근 사각형에 짧은 글자를 담는다.
     /// </summary>
     [ToolboxItem(true)]
-    [DefaultProperty("Text")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("작은 알림/카운트 배지입니다.")]
     public class AdvBadge : AdvControlBase
     {
         private const int PadH = 8;
         private const int PadV = 3;
 
-        private AdvContextColor _context = AdvContextColor.Secondary;
+        private Color _context = Color.Empty;
         private bool _pill = true;
         private AdvBadgeOptions _options;
 
@@ -37,13 +36,14 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
-        [DefaultValue(AdvContextColor.Secondary)]
-        [Description("배지의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("배지 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _context; }
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(true)]
@@ -80,7 +80,7 @@ namespace AdvancedControls.Controls
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = EffectiveTheme;
-            var palette = theme.ResolveContext(_context);
+            var palette = AdvContextPalette.Resolve(_context, theme);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -119,13 +119,14 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
-        [DefaultValue(AdvContextColor.Secondary)]
-        [Description("배지의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("배지 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
         }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
 
         [DefaultValue(true)]
         [Description("완전히 둥근 알약 모양으로 그릴지 여부입니다.")]

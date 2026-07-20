@@ -12,7 +12,7 @@ namespace AdvancedControls.Controls
     /// 제목 글자는 <see cref="Control.Text"/>, 제목의 모양·배치는 <see cref="Header"/>에 있다.
     /// </summary>
     [ToolboxItem(true)]
-    [DefaultProperty("Text")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("제목이 있는 테마 컨테이너입니다.")]
     public class AdvGroupBox : AdvContainerBase
     {

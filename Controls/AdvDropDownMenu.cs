@@ -26,11 +26,10 @@ namespace AdvancedControls.Controls
     /// <summary>
     /// 누르면 아래로 액션 목록이 떠오르는 드롭다운 메뉴 버튼. 폼 밖까지 뜨는 팝업과
     /// 바깥 클릭·Esc 자동 닫기는 기존 콤보 팝업 인프라(<see cref="AdvComboPopup"/>)를 재사용한다.
-    /// Bootstrap의 <c>.dropdown</c>에 대응한다.
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ItemClicked")]
-    [DefaultProperty("Items")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("액션 목록이 떠오르는 드롭다운 메뉴 버튼입니다.")]
     public class AdvDropDownMenu : AdvControlBase
     {
@@ -63,7 +62,7 @@ namespace AdvancedControls.Controls
             get { return true; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("드롭다운에 나열할 메뉴 항목들입니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string[] Items
@@ -338,6 +337,13 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.MaxDropDownItems; }
             set { _owner.MaxDropDownItems = value; }
+        }
+
+        [Description("드롭다운에 나열할 메뉴 항목들입니다.")]
+        public string[] Items
+        {
+            get { return _owner.Items; }
+            set { _owner.Items = value; }
         }
     }
 }

@@ -13,7 +13,7 @@ namespace AdvancedControls.Controls
     /// 본문 높이는 <see cref="BodyHeight"/>로 정하며, 접히면 자식은 그대로 두고 컨테이너 높이만 줄여 클리핑한다.
     /// </summary>
     [ToolboxItem(true)]
-    [DefaultProperty("Title")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("아코디언의 한 섹션입니다.")]
     public class AdvAccordionItem : AdvContainerBase
     {
@@ -47,7 +47,7 @@ namespace AdvancedControls.Controls
             get { return new Size(320, 40); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue("")]
         [Description("머리글에 표시할 제목입니다.")]
         public string Title
@@ -62,7 +62,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("펼쳐진 상태인지 여부입니다. 바꾸면 애니메이션으로 전환됩니다.")]
         public bool Expanded
@@ -84,7 +84,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(120)]
         [Description("펼쳤을 때의 본문 높이입니다.")]
         public int BodyHeight
@@ -304,7 +304,6 @@ namespace AdvancedControls.Controls
     /// <summary>
     /// <see cref="AdvAccordionItem"/> 섹션들을 세로로 쌓아 펼치고 접는 아코디언.
     /// 항목은 Dock=Top으로 배치되어 한 항목이 펼쳐질 때 아래 항목들이 자동으로 밀린다.
-    /// Bootstrap의 <c>.accordion</c>에 대응한다.
     /// </summary>
     [ToolboxItem(true)]
     [Description("여러 섹션을 펼치고 접는 아코디언입니다.")]
@@ -389,8 +388,35 @@ namespace AdvancedControls.Controls
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class AdvAccordionItemOptions : AdvOptions
     {
+        private readonly AdvAccordionItem _owner;
+
         internal AdvAccordionItemOptions(AdvAccordionItem owner) : base(owner.Styling, owner.Palette)
         {
+            _owner = owner;
+        }
+
+        [DefaultValue("")]
+        [Description("머리글에 표시할 제목입니다.")]
+        public string Title
+        {
+            get { return _owner.Title; }
+            set { _owner.Title = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("펼쳐진 상태인지 여부입니다. 바꾸면 애니메이션으로 전환됩니다.")]
+        public bool Expanded
+        {
+            get { return _owner.Expanded; }
+            set { _owner.Expanded = value; }
+        }
+
+        [DefaultValue(120)]
+        [Description("펼쳤을 때의 본문 높이입니다.")]
+        public int BodyHeight
+        {
+            get { return _owner.BodyHeight; }
+            set { _owner.BodyHeight = value; }
         }
     }
 

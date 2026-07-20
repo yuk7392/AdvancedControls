@@ -21,7 +21,7 @@ namespace AdvancedControls.Controls
     /// 테마를 따르는 라벨. 배경·테두리는 그리지 않고 글자만 그린다.
     /// </summary>
     [ToolboxItem(true)]
-    [DefaultProperty("Text")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 라벨입니다.")]
     public class AdvLabel : AdvControlBase
     {
@@ -86,7 +86,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(ContentAlignment.MiddleLeft)]
         [Description("글자 정렬입니다.")]
         public ContentAlignment TextAlign
@@ -242,6 +242,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.Wrap; }
             set { _owner.Wrap = value; }
+        }
+
+        [DefaultValue(ContentAlignment.MiddleLeft)]
+        [Description("글자 정렬입니다.")]
+        public ContentAlignment TextAlign
+        {
+            get { return _owner.TextAlign; }
+            set { _owner.TextAlign = value; }
         }
     }
 }

@@ -17,7 +17,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("SelectedIndexChanged")]
-    [DefaultProperty("SelectedIndex")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 콤보박스입니다.")]
     public class AdvComboBox : AdvControlBase
     {
@@ -106,7 +106,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Data")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [Description("목록에 표시할 항목입니다. DataSource를 지정하면 직접 넣을 수 없습니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
         [MergableProperty(false)]
@@ -115,7 +115,7 @@ namespace AdvancedControls.Controls
             get { return _itemsWrapper; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(-1)]
         [Description("선택된 항목의 위치입니다. -1이면 선택 없음입니다.")]
         public int SelectedIndex
@@ -196,7 +196,7 @@ namespace AdvancedControls.Controls
 
         #region 데이터 바인딩
 
-        [Category("Data")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(null)]
         [RefreshProperties(RefreshProperties.Repaint)]
         [AttributeProvider(typeof(IListSource))]
@@ -211,7 +211,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Data")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue("")]
         [Description("항목을 표시할 때 쓸 속성(컬럼) 이름입니다. 비우면 ToString()을 씁니다.")]
         public string DisplayMember
@@ -228,7 +228,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Data")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue("")]
         [Description("SelectedValue가 돌려줄 속성(컬럼) 이름입니다. 비우면 항목 자체를 돌려줍니다.")]
         public string ValueMember
@@ -973,6 +973,48 @@ namespace AdvancedControls.Controls
         public AdvDropDownSettings DropDown
         {
             get { return _owner.DropDown; }
+        }
+
+        [Description("목록에 표시할 항목입니다. DataSource를 지정하면 직접 넣을 수 없습니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        [MergableProperty(false)]
+        public AdvComboBox.ObjectCollection Items
+        {
+            get { return _owner.Items; }
+        }
+
+        [DefaultValue(-1)]
+        [Description("선택된 항목의 위치입니다. -1이면 선택 없음입니다.")]
+        public int SelectedIndex
+        {
+            get { return _owner.SelectedIndex; }
+            set { _owner.SelectedIndex = value; }
+        }
+
+        [DefaultValue(null)]
+        [RefreshProperties(RefreshProperties.Repaint)]
+        [AttributeProvider(typeof(IListSource))]
+        [Description("목록을 채울 데이터 원본입니다. DataTable, BindingSource, IList를 받습니다.")]
+        public object DataSource
+        {
+            get { return _owner.DataSource; }
+            set { _owner.DataSource = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("항목을 표시할 때 쓸 속성(컬럼) 이름입니다. 비우면 ToString()을 씁니다.")]
+        public string DisplayMember
+        {
+            get { return _owner.DisplayMember; }
+            set { _owner.DisplayMember = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("SelectedValue가 돌려줄 속성(컬럼) 이름입니다. 비우면 항목 자체를 돌려줍니다.")]
+        public string ValueMember
+        {
+            get { return _owner.ValueMember; }
+            set { _owner.ValueMember = value; }
         }
     }
 }

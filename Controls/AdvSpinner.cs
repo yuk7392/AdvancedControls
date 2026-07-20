@@ -18,15 +18,15 @@ namespace AdvancedControls.Controls
     }
 
     /// <summary>
-    /// 로딩 중임을 나타내는 무한 회전/맥동 인디케이터. Bootstrap의 <c>.spinner-border</c>·
-    /// <c>.spinner-grow</c>에 대응한다. <see cref="AdvAnimator"/>의 loop 모드로 돈다.
+    /// 로딩 중임을 나타내는 무한 회전/맥동 인디케이터.
+    /// <see cref="AdvAnimator"/>의 loop 모드로 돈다.
     /// </summary>
     [ToolboxItem(true)]
     [Description("로딩 스피너입니다.")]
     public class AdvSpinner : AdvControlBase
     {
         private readonly AdvAnimator _anim;
-        private AdvContextColor _context = AdvContextColor.Primary;
+        private Color _context = Color.Empty;
         private AdvSpinnerStyle _style = AdvSpinnerStyle.Border;
         private int _thickness;          // 0이면 크기에서 자동 계산
         private int _periodMs = 800;
@@ -48,13 +48,14 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
-        [DefaultValue(AdvContextColor.Primary)]
-        [Description("스피너의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("스피너 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _context; }
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvSpinnerStyle.Border)]
@@ -65,7 +66,7 @@ namespace AdvancedControls.Controls
             set { if (_style == value) return; _style = value; Invalidate(); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(0)]
         [Description("테두리 스피너의 선 두께입니다. 0이면 크기에서 자동 계산합니다.")]
         public int Thickness
@@ -74,7 +75,7 @@ namespace AdvancedControls.Controls
             set { value = Math.Max(0, value); if (_thickness == value) return; _thickness = value; Invalidate(); }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(800)]
         [Description("한 바퀴(또는 한 맥동)에 걸리는 시간(ms)입니다.")]
         public int PeriodMs
@@ -123,7 +124,7 @@ namespace AdvancedControls.Controls
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            var palette = EffectiveTheme.ResolveContext(_context);
+            var palette = AdvContextPalette.Resolve(_context, EffectiveTheme);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -190,13 +191,14 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
-        [DefaultValue(AdvContextColor.Primary)]
-        [Description("스피너의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("스피너 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
         }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
 
         [DefaultValue(AdvSpinnerStyle.Border)]
         [Description("스피너 종류입니다.")]
@@ -204,6 +206,22 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.Style; }
             set { _owner.Style = value; }
+        }
+
+        [DefaultValue(0)]
+        [Description("테두리 스피너의 선 두께입니다. 0이면 크기에서 자동 계산합니다.")]
+        public int Thickness
+        {
+            get { return _owner.Thickness; }
+            set { _owner.Thickness = value; }
+        }
+
+        [DefaultValue(800)]
+        [Description("한 바퀴(또는 한 맥동)에 걸리는 시간(ms)입니다.")]
+        public int PeriodMs
+        {
+            get { return _owner.PeriodMs; }
+            set { _owner.PeriodMs = value; }
         }
     }
 }

@@ -191,6 +191,12 @@ namespace AdvancedControls
             get { return _appearance.BorderDash; }
         }
 
+        /// <summary>채움 그라데이션 각도. 컨테이너가 지정하지 않았으면 테마 값을 따른다.</summary>
+        protected float EffectiveGradientAngle
+        {
+            get { return _appearance.ResolveGradientAngle(EffectiveTheme); }
+        }
+
         /// <summary>네 모서리를 모두 같은 값으로 맞추는 지름길.</summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -224,7 +230,7 @@ namespace AdvancedControls
         /// <summary>현재 상태에서 그려야 할 그림자. Elevated가 아니면 null.</summary>
         protected AdvShadow CurrentElevation
         {
-            get { return _appearance.Elevated ? EffectiveTheme.Elevation : null; }
+            get { return _appearance.Elevated ? _appearance.ResolveElevation(EffectiveTheme) : null; }
         }
 
         /// <summary>테두리를 그릴 영역. 그림자 여백을 뺀 안쪽이다.</summary>

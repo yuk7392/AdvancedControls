@@ -13,7 +13,7 @@ namespace AdvancedControls.Controls
     /// 테마를 따르는 진행 막대. 값이 바뀌면 부드럽게 채워진다.
     /// </summary>
     [ToolboxItem(true)]
-    [DefaultProperty("Value")]
+    [DefaultProperty("AdvancedControlOptions")]
     [DefaultEvent("ValueChanged")]
     [Description("테마를 따르는 진행 막대입니다.")]
     public class AdvProgressBar : AdvControlBase
@@ -22,7 +22,7 @@ namespace AdvancedControls.Controls
         private int _maximum = 100;
         private int _value;
         private bool _showPercentage;
-        private AdvContextColor _context = AdvContextColor.Default;
+        private Color _context = Color.Empty;
         private bool _striped;
         private bool _stripeAnimated = true;
         private readonly AdvAnimator _fillAnim;
@@ -61,7 +61,7 @@ namespace AdvancedControls.Controls
             get { return new Size(220, 14); }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(0)]
         [Description("최솟값입니다.")]
         public int Minimum
@@ -79,7 +79,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(100)]
         [Description("최댓값입니다.")]
         public int Maximum
@@ -96,7 +96,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(0)]
         [Description("현재 값입니다. 최솟값~최댓값 범위로 잘립니다.")]
         public int Value
@@ -131,13 +131,14 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("진행 막대의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
-        public AdvContextColor Context
+        [Description("진행 막대의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _context; }
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
         [Browsable(false)]
         [DefaultValue(false)]
@@ -206,7 +207,7 @@ namespace AdvancedControls.Controls
             int offset = (int)(_stripeAnim.Value * period);   // 0~period 흐름
             int h = fillRect.Height;
 
-            // Bootstrap .progress-bar-striped와 동일하게 라이트/다크 무관 고정 반투명 흰색(rgba(255,255,255,.15)).
+            // 라이트/다크 무관하게 고정된 반투명 흰색(rgba(255,255,255,.15))으로 빗금을 얹는다.
             if (_stripeBrush == null)
                 _stripeBrush = new SolidBrush(Color.FromArgb(38, 255, 255, 255));
 
@@ -242,8 +243,8 @@ namespace AdvancedControls.Controls
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = EffectiveTheme;
-            var palette = theme.ResolveContext(_context);
-            bool neutral = _context == AdvContextColor.Default;
+            var palette = AdvContextPalette.Resolve(_context, theme);
+            bool neutral = _context.IsEmpty;
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -282,8 +283,8 @@ namespace AdvancedControls.Controls
                     using (var brush = AdvGraphics.CreateFillBrush(
                                fillRect,
                                Enabled ? palette.Solid : theme.TextDisabled,
-                               Enabled && (neutral || _context == AdvContextColor.Primary) ? theme.AccentGradientEnd : Color.Empty,
-                               theme.GradientAngle))
+                               Enabled && neutral ? theme.AccentGradientEnd : Color.Empty,
+                               EffectiveGradientAngle))
                     {
                         g.FillPath(brush, path);
                     }
@@ -342,7 +343,7 @@ namespace AdvancedControls.Controls
                     if (edge > bounds.Left)
                     {
                         g.SetClip(Rectangle.FromLTRB(bounds.Left, bounds.Top, edge, bounds.Bottom));
-                        using (var b = new SolidBrush(theme.ResolveContext(_context).OnSolid))
+                        using (var b = new SolidBrush(AdvContextPalette.Resolve(_context, theme).OnSolid))
                             g.DrawString(text, Font, b, bounds, fmt);
                     }
 
@@ -387,6 +388,30 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
+        [DefaultValue(0)]
+        [Description("최솟값입니다.")]
+        public int Minimum
+        {
+            get { return _owner.Minimum; }
+            set { _owner.Minimum = value; }
+        }
+
+        [DefaultValue(100)]
+        [Description("최댓값입니다.")]
+        public int Maximum
+        {
+            get { return _owner.Maximum; }
+            set { _owner.Maximum = value; }
+        }
+
+        [DefaultValue(0)]
+        [Description("현재 값입니다. 최솟값~최댓값 범위로 잘립니다.")]
+        public int Value
+        {
+            get { return _owner.Value; }
+            set { _owner.Value = value; }
+        }
+
         [DefaultValue(false)]
         [Description("가운데에 퍼센트를 표시할지 여부입니다.")]
         public bool ShowPercentage
@@ -395,13 +420,14 @@ namespace AdvancedControls.Controls
             set { _owner.ShowPercentage = value; }
         }
 
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("진행 막대의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("진행 막대의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
         }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
 
         [DefaultValue(false)]
         [Description("채움에 빗금 무늬를 넣을지 여부입니다.")]

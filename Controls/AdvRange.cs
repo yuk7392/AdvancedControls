@@ -9,12 +9,12 @@ using AdvancedControls.Theming;
 namespace AdvancedControls.Controls
 {
     /// <summary>
-    /// 트랙 위에서 손잡이를 드래그해 값을 고르는 슬라이더. Bootstrap의 <c>&lt;input type="range"&gt;</c>에
-    /// 대응한다. 채움은 컨텍스트 색을 따르고, 드래그·키보드·휠로 값을 바꾼다.
+    /// 트랙 위에서 손잡이를 드래그해 값을 고르는 슬라이더.
+    /// 채움은 강조 색을 따르고, 드래그·키보드·휠로 값을 바꾼다.
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ValueChanged")]
-    [DefaultProperty("Value")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("드래그로 값을 고르는 슬라이더입니다.")]
     public class AdvRange : AdvControlBase
     {
@@ -22,7 +22,7 @@ namespace AdvancedControls.Controls
         private int _maximum = 100;
         private int _value;
         private int _increment = 1;
-        private AdvContextColor _context = AdvContextColor.Primary;
+        private Color _context = Color.Empty;
         private bool _dragging;
         private AdvRangeOptions _options;
 
@@ -45,7 +45,7 @@ namespace AdvancedControls.Controls
             get { return true; }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(0)]
         [Description("최솟값입니다.")]
         public int Minimum
@@ -61,7 +61,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(100)]
         [Description("최댓값입니다.")]
         public int Maximum
@@ -77,7 +77,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(0)]
         [Description("현재 값입니다. 최솟값~최댓값 범위로 잘립니다.")]
         public int Value
@@ -97,7 +97,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(1)]
         [Description("방향키·휠이 한 번에 더하거나 빼는 값입니다.")]
         public int Increment
@@ -107,13 +107,14 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
-        [DefaultValue(AdvContextColor.Primary)]
-        [Description("채움(진행 부분)의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("채움(진행 부분)의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _context; }
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
         [Category(AdvCategory.Name)]
         [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
@@ -167,7 +168,7 @@ namespace AdvancedControls.Controls
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = EffectiveTheme;
-            var palette = theme.ResolveContext(_context);
+            var palette = AdvContextPalette.Resolve(_context, theme);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -313,12 +314,45 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
-        [DefaultValue(AdvContextColor.Primary)]
-        [Description("채움(진행 부분)의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [DefaultValue(0)]
+        [Description("최솟값입니다.")]
+        public int Minimum
+        {
+            get { return _owner.Minimum; }
+            set { _owner.Minimum = value; }
+        }
+
+        [DefaultValue(100)]
+        [Description("최댓값입니다.")]
+        public int Maximum
+        {
+            get { return _owner.Maximum; }
+            set { _owner.Maximum = value; }
+        }
+
+        [DefaultValue(0)]
+        [Description("현재 값입니다. 최솟값~최댓값 범위로 잘립니다.")]
+        public int Value
+        {
+            get { return _owner.Value; }
+            set { _owner.Value = value; }
+        }
+
+        [DefaultValue(1)]
+        [Description("방향키·휠이 한 번에 더하거나 빼는 값입니다.")]
+        public int Increment
+        {
+            get { return _owner.Increment; }
+            set { _owner.Increment = value; }
+        }
+
+        [Description("채움(진행 부분)의 강조 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
         }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
     }
 }

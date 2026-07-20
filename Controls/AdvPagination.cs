@@ -11,11 +11,11 @@ namespace AdvancedControls.Controls
 {
     /// <summary>
     /// 페이지 번호 버튼이 가로로 나열된 페이지네이션 스트립. 이전/다음 화살표와
-    /// 활성·호버·비활성 상태를 가진다. Bootstrap의 <c>.pagination</c>에 대응한다.
+    /// 활성·호버·비활성 상태를 가진다.
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("CurrentPageChanged")]
-    [DefaultProperty("CurrentPage")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("페이지 번호를 나열하는 페이지네이션 컨트롤입니다.")]
     public class AdvPagination : AdvControlBase
     {
@@ -70,7 +70,7 @@ namespace AdvancedControls.Controls
             get { return _options ?? (_options = new AdvPaginationOptions(this)); }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(1)]
         [Description("전체 페이지 수입니다.")]
         public int PageCount
@@ -87,7 +87,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(1)]
         [Description("현재 선택된 페이지(1부터 시작)입니다.")]
         public int CurrentPage
@@ -355,8 +355,27 @@ namespace AdvancedControls.Controls
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class AdvPaginationOptions : AdvOptions
     {
+        private readonly AdvPagination _owner;
+
         internal AdvPaginationOptions(AdvPagination owner) : base(owner.Styling, owner.Palette)
         {
+            _owner = owner;
+        }
+
+        [DefaultValue(1)]
+        [Description("전체 페이지 수입니다.")]
+        public int PageCount
+        {
+            get { return _owner.PageCount; }
+            set { _owner.PageCount = value; }
+        }
+
+        [DefaultValue(1)]
+        [Description("현재 선택된 페이지(1부터 시작)입니다.")]
+        public int CurrentPage
+        {
+            get { return _owner.CurrentPage; }
+            set { _owner.CurrentPage = value; }
         }
     }
 }

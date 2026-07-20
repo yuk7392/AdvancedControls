@@ -10,11 +10,11 @@ namespace AdvancedControls.Controls
 {
     /// <summary>
     /// 둥근 테두리 박스에 선택적 머리글/바닥글과 본문(자식 컨트롤)을 담는 범용 컨테이너.
-    /// Bootstrap의 <c>.card</c>에 대응한다. 머리글/바닥글 글자는 <see cref="HeaderText"/>·
-    /// <see cref="FooterText"/>에 있고, 그 사이 본문 영역이 자식 컨트롤이 놓이는 자리다.
+    /// 머리글/바닥글 글자는 <see cref="HeaderText"/>·<see cref="FooterText"/>에 있고,
+    /// 그 사이 본문 영역이 자식 컨트롤이 놓이는 자리다.
     /// </summary>
     [ToolboxItem(true)]
-    [DefaultProperty("HeaderText")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("머리글/바닥글을 가진 테마 카드 컨테이너입니다.")]
     public class AdvCard : AdvContainerBase
     {
@@ -26,10 +26,10 @@ namespace AdvancedControls.Controls
         private string _footerText = string.Empty;
         private bool _showHeaderSeparator = true;
         private bool _showFooterSeparator = true;
-        private AdvContextColor _context = AdvContextColor.Default;
+        private Color _context = Color.Empty;
         private AdvCardOptions _options;
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue("")]
         [Description("머리글에 표시할 제목입니다. 비우면 머리글 영역이 사라집니다.")]
         public string HeaderText
@@ -45,7 +45,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue("")]
         [Description("바닥글에 표시할 글자입니다. 비우면 바닥글 영역이 사라집니다.")]
         public string FooterText
@@ -80,13 +80,14 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("카드의 컨텍스트 색입니다. Default가 아니면 머리글 띠와 테두리에 색을 입힙니다.")]
-        public AdvContextColor Context
+        [Description("카드 색입니다. 비워 두면 테마를 따르고, 지정하면 머리글 띠와 테두리에 색을 입힙니다.")]
+        public Color Context
         {
             get { return _context; }
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
         [Category(AdvCategory.Name)]
@@ -148,13 +149,13 @@ namespace AdvancedControls.Controls
             var bounds = FrameBounds;
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
-            var palette = theme.ResolveContext(_context);
-            bool neutral = _context == AdvContextColor.Default;
+            var palette = AdvContextPalette.Resolve(_context, theme);
+            bool neutral = _context.IsEmpty;
             Color borderColor = neutral ? theme.Border : palette.SubtleBorder;
 
             AdvFrameRenderer.Draw(g, bounds, theme, EffectiveCorners, EffectiveBorderWidth,
                                   theme.Surface, theme.SurfaceGradientEnd, borderColor,
-                                  null, CurrentElevation, EffectiveBorderDash);
+                                  null, CurrentElevation, EffectiveBorderDash, EffectiveGradientAngle);
 
             int bw = EffectiveBorderWidth;
             var textColor = Enabled ? theme.Text : theme.TextDisabled;
@@ -230,12 +231,29 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
-        [DefaultValue(AdvContextColor.Default)]
-        [Description("카드의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("카드 색입니다. 비워 두면 테마를 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
+        }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
+
+        [DefaultValue("")]
+        [Description("머리글에 표시할 제목입니다. 비우면 머리글 영역이 사라집니다.")]
+        public string HeaderText
+        {
+            get { return _owner.HeaderText; }
+            set { _owner.HeaderText = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("바닥글에 표시할 글자입니다. 비우면 바닥글 영역이 사라집니다.")]
+        public string FooterText
+        {
+            get { return _owner.FooterText; }
+            set { _owner.FooterText = value; }
         }
 
         [DefaultValue(true)]

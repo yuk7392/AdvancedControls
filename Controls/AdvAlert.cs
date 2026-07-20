@@ -9,16 +9,16 @@ using AdvancedControls.Theming;
 namespace AdvancedControls.Controls
 {
     /// <summary>
-    /// 상황별 알림 메시지 박스. 컨텍스트 색의 옅은 배경/테두리/글자를 쓰고, 선택적으로
-    /// 닫기 버튼을 단다. Bootstrap의 <c>.alert</c>에 대응한다.
+    /// 상황별 알림 메시지 박스. 강조 색의 옅은 배경/테두리/글자를 쓰고, 선택적으로
+    /// 닫기 버튼을 단다.
     /// </summary>
     [ToolboxItem(true)]
-    [DefaultProperty("Text")]
+    [DefaultProperty("AdvancedControlOptions")]
     [DefaultEvent("Dismissed")]
     [Description("상황별 알림 메시지 박스입니다.")]
     public class AdvAlert : AdvControlBase
     {
-        private AdvContextColor _context = AdvContextColor.Info;
+        private Color _context = Color.Empty;
         private bool _dismissible;
         private bool _closeHover;
         private Rectangle _closeRect = Rectangle.Empty;
@@ -44,13 +44,14 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
-        [DefaultValue(AdvContextColor.Info)]
-        [Description("알림의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("알림 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다. 옅은 배경/테두리/글자로 파생됩니다.")]
+        public Color Context
         {
             get { return _context; }
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
+        public bool ShouldSerializeContext() { return !_context.IsEmpty; }
+        public void ResetContext() { Context = Color.Empty; }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
@@ -72,7 +73,7 @@ namespace AdvancedControls.Controls
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = EffectiveTheme;
-            var palette = theme.ResolveContext(_context);
+            var palette = AdvContextPalette.Resolve(_context, theme);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -82,7 +83,7 @@ namespace AdvancedControls.Controls
             int bw = Math.Max(1, EffectiveBorderWidth);
             AdvFrameRenderer.Draw(g, bounds, theme, EffectiveCorners, bw,
                                   palette.SubtleBg, Color.Empty, palette.SubtleBorder,
-                                  null, CurrentElevation, EffectiveBorderDash);
+                                  null, CurrentElevation, EffectiveBorderDash, EffectiveGradientAngle);
 
             var content = new Rectangle(
                 bounds.Left + bw + Padding.Left, bounds.Top + bw + Padding.Top,
@@ -169,13 +170,14 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
-        [DefaultValue(AdvContextColor.Info)]
-        [Description("알림의 컨텍스트 색입니다.")]
-        public AdvContextColor Context
+        [Description("알림 색입니다. 비워 두면 테마 강조색(Accent)을 따릅니다.")]
+        public Color Context
         {
             get { return _owner.Context; }
             set { _owner.Context = value; }
         }
+        public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
+        public void ResetContext() { _owner.ResetContext(); }
 
         [DefaultValue(false)]
         [Description("닫기(X) 버튼을 표시할지 여부입니다.")]

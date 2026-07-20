@@ -49,14 +49,6 @@ namespace AdvancedControls.Theming
         /// </summary>
         public Color FocusRing { get; set; }
 
-        // 컨텍스트 색 — Bootstrap의 상황별 색(success/danger/warning/info/secondary).
-        // Primary는 위의 Accent 세트에서 합성하므로 별도 필드를 두지 않는다(ResolveContext 참조).
-        public AdvContextPalette Secondary { get; set; }
-        public AdvContextPalette Success { get; set; }
-        public AdvContextPalette Danger { get; set; }
-        public AdvContextPalette Warning { get; set; }
-        public AdvContextPalette Info { get; set; }
-
         public AdvCorners Corners { get; set; }
         public int BorderWidth { get; set; }
 
@@ -73,29 +65,24 @@ namespace AdvancedControls.Theming
         public AdvShadow Elevation { get; set; }
 
         /// <summary>
-        /// 컨텍스트 색을 팔레트로 돌려준다. Default/Primary는 Accent 세트에서 합성하고,
-        /// 나머지는 저장된 팔레트를 그대로 쓴다.
+        /// 테마 강조색(Accent 세트)에서 합성한 컨텍스트 팔레트.
+        /// 컨트롤이 색을 따로 지정하지 않았을 때(Context 비움) 쓰는 기본 팔레트다.
+        /// Subtle 계열은 면색·글자색과 섞어 테마를 따른다.
         /// </summary>
-        public AdvContextPalette ResolveContext(AdvContextColor ctx)
+        public AdvContextPalette AccentContext
         {
-            switch (ctx)
+            get
             {
-                case AdvContextColor.Secondary: return Secondary;
-                case AdvContextColor.Success: return Success;
-                case AdvContextColor.Danger: return Danger;
-                case AdvContextColor.Warning: return Warning;
-                case AdvContextColor.Info: return Info;
-                default: // Default / Primary — Accent에서 합성. Subtle은 면색/글자색과 섞어 테마를 따른다.
-                    return new AdvContextPalette
-                    {
-                        Solid = Accent,
-                        SolidHover = AccentHover,
-                        SolidPressed = AccentPressed,
-                        OnSolid = OnAccent,
-                        SubtleBg = AdvContextPalette.Lerp(Surface, Accent, 0.16f),
-                        SubtleBorder = AdvContextPalette.Lerp(Surface, Accent, 0.40f),
-                        SubtleText = AdvContextPalette.Lerp(Text, Accent, 0.55f)
-                    };
+                return new AdvContextPalette
+                {
+                    Solid = Accent,
+                    SolidHover = AccentHover,
+                    SolidPressed = AccentPressed,
+                    OnSolid = OnAccent,
+                    SubtleBg = AdvContextPalette.Lerp(Surface, Accent, 0.16f),
+                    SubtleBorder = AdvContextPalette.Lerp(Surface, Accent, 0.40f),
+                    SubtleText = AdvContextPalette.Lerp(Text, Accent, 0.55f)
+                };
             }
         }
 
@@ -140,22 +127,7 @@ namespace AdvancedControls.Theming
                 GradientAngle = 90f,
                 TransitionDuration = 120,
                 FocusGlow = new AdvShadow(Color.FromArgb(120, ColorTranslator.FromHtml("#2563EB")), 3, 0, 0),
-                Elevation = new AdvShadow(Color.FromArgb(60, 0, 0, 0), 5, 0, 2),
-                Secondary = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#6C757D"), Color.White,
-                    ColorTranslator.FromHtml("#F8F9FA"), ColorTranslator.FromHtml("#E9ECEF"), ColorTranslator.FromHtml("#41464B")),
-                Success = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#198754"), Color.White,
-                    ColorTranslator.FromHtml("#D1E7DD"), ColorTranslator.FromHtml("#BADBCC"), ColorTranslator.FromHtml("#0F5132")),
-                Danger = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#DC3545"), Color.White,
-                    ColorTranslator.FromHtml("#F8D7DA"), ColorTranslator.FromHtml("#F5C2C7"), ColorTranslator.FromHtml("#842029")),
-                Warning = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#FFC107"), Color.Black,
-                    ColorTranslator.FromHtml("#FFF3CD"), ColorTranslator.FromHtml("#FFECB5"), ColorTranslator.FromHtml("#664D03")),
-                Info = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#0DCAF0"), Color.Black,
-                    ColorTranslator.FromHtml("#CFF4FC"), ColorTranslator.FromHtml("#B6EFFB"), ColorTranslator.FromHtml("#055160"))
+                Elevation = new AdvShadow(Color.FromArgb(60, 0, 0, 0), 5, 0, 2)
             };
         }
 
@@ -189,22 +161,7 @@ namespace AdvancedControls.Theming
                 GradientAngle = 90f,
                 TransitionDuration = 120,
                 FocusGlow = new AdvShadow(Color.FromArgb(140, ColorTranslator.FromHtml("#3B82F6")), 3, 0, 0),
-                Elevation = new AdvShadow(Color.FromArgb(110, 0, 0, 0), 6, 0, 2),
-                Secondary = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#6C757D"), Color.White,
-                    ColorTranslator.FromHtml("#2B3035"), ColorTranslator.FromHtml("#373B3E"), ColorTranslator.FromHtml("#A7ACB1")),
-                Success = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#198754"), Color.White,
-                    ColorTranslator.FromHtml("#0A3622"), ColorTranslator.FromHtml("#0F5132"), ColorTranslator.FromHtml("#75B798")),
-                Danger = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#DC3545"), Color.White,
-                    ColorTranslator.FromHtml("#2C0B0E"), ColorTranslator.FromHtml("#842029"), ColorTranslator.FromHtml("#EA868F")),
-                Warning = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#FFC107"), Color.Black,
-                    ColorTranslator.FromHtml("#332701"), ColorTranslator.FromHtml("#664D03"), ColorTranslator.FromHtml("#FFDA6A")),
-                Info = AdvContextPalette.Create(
-                    ColorTranslator.FromHtml("#0DCAF0"), Color.Black,
-                    ColorTranslator.FromHtml("#032830"), ColorTranslator.FromHtml("#055160"), ColorTranslator.FromHtml("#6EDFF6"))
+                Elevation = new AdvShadow(Color.FromArgb(110, 0, 0, 0), 6, 0, 2)
             };
         }
     }

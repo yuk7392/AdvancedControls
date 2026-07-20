@@ -8,7 +8,7 @@ namespace AdvancedControls.Controls
 {
     [ToolboxItem(true)]
     [DefaultEvent("CheckedChanged")]
-    [DefaultProperty("Checked")]
+    [DefaultProperty("AdvancedControlOptions")]
     [Description("테마를 따르는 라디오 버튼입니다. 같은 부모 안의 라디오끼리 한 그룹이 됩니다.")]
     public class AdvRadioButton : AdvToggleBase
     {
