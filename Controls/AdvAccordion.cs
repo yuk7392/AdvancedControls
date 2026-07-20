@@ -75,6 +75,7 @@ namespace AdvancedControls.Controls
                 // 펼치면 감췄던 본문 자식을 즉시 되살려 열리는 동안 보이게 한다(접힘 완료 시 다시 숨긴다).
                 if (value && !DesignMode) RestoreChildrenAfterCollapse();
                 _anim.Duration = DesignMode ? 0 : EffectiveTheme.TransitionDuration;
+                _anim.Easing = EffectiveEasing;
                 _anim.AnimateTo(value ? 1f : 0f);
                 ApplyHeight();
                 Invalidate();

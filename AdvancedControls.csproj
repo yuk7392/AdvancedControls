@@ -46,6 +46,8 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Animation\AdvAnimator.cs" />
+    <Compile Include="Animation\AdvAnimationDriver.cs" />
+    <Compile Include="Animation\AdvEasing.cs" />
     <Compile Include="Controls\AdvButton.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -87,6 +89,7 @@
     <Compile Include="Theming\AdvThemeManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Theming\AdvAppearance.cs" />
+    <Compile Include="Theming\AdvOptionGroups.cs" />
     <Compile Include="Theming\AdvCornersConverter.cs" />
     <Compile Include="Theming\AdvHeaderAppearance.cs" />
     <Compile Include="Theming\AdvDropDownSettings.cs" />
@@ -98,6 +101,9 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Controls\AdvToggleSwitch.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvToolTip.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Controls\AdvNumericUpDown.cs">

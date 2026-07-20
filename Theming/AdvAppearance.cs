@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using AdvancedControls.Animation;
 
 namespace AdvancedControls.Theming
 {
@@ -33,6 +34,7 @@ namespace AdvancedControls.Theming
         private AdvCorners _corners = new AdvCorners(-1);
         private int _borderWidth = -1;
         private int _transitionDuration = -1;
+        private AdvEasing _easing = AdvEasing.Smooth;
         private float _gradientAngle = -1f;
         private bool _showFocusGlow = true;
         private bool _elevated;
@@ -124,6 +126,19 @@ namespace AdvancedControls.Theming
                 if (value < -1) value = -1;
                 if (_transitionDuration == value) return;
                 _transitionDuration = value;
+                RaiseChanged();
+            }
+        }
+
+        [DefaultValue(AdvEasing.Smooth)]
+        [Description("호버·포커스 전환의 가감속 곡선입니다. CSS transition-timing-function에 대응합니다.")]
+        public AdvEasing Easing
+        {
+            get { return _easing; }
+            set
+            {
+                if (_easing == value) return;
+                _easing = value;
                 RaiseChanged();
             }
         }

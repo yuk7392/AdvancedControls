@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using AdvancedControls.Rendering;
@@ -77,6 +78,17 @@ namespace AdvancedControls.Controls
 
         private readonly PlaceholderTextBox _inner;
         private string _placeholder = string.Empty;
+
+        // 입력 강화: 아이콘·접두/접미 애드온·지우기 버튼·검증 상태
+        private const int AddonGap = 6;
+        private Image _leadingIcon;
+        private Image _trailingIcon;
+        private string _prefix = string.Empty;
+        private string _suffix = string.Empty;
+        private bool _showClearButton;
+        private AdvValidationState _validation = AdvValidationState.None;
+        private bool _clearHover;
+        private Rectangle _leadingRect, _prefixRect, _suffixRect, _trailingRect, _clearRect, _validationRect;
 
         public AdvTextBox()
         {
@@ -170,6 +182,7 @@ namespace AdvancedControls.Controls
                 if (_inner.ReadOnly == value) return;
                 _inner.ReadOnly = value;
                 ApplyInnerAppearance();
+                LayoutInner();      // 읽기 전용이면 지우기 버튼 자리를 예약하지 않는다
                 Invalidate();
             }
         }
@@ -267,6 +280,241 @@ namespace AdvancedControls.Controls
 
         #endregion
 
+        #region 입력 강화 (아이콘·애드온·지우기·검증)
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(null)]
+        [Description("입력창 왼쪽 안에 표시할 아이콘입니다. 비율을 유지하며 맞춰집니다.")]
+        public Image LeadingIcon
+        {
+            get { return _leadingIcon; }
+            set { if (_leadingIcon == value) return; _leadingIcon = value; LayoutInner(); Invalidate(); }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(null)]
+        [Description("입력창 오른쪽 안에 표시할 아이콘입니다. 비율을 유지하며 맞춰집니다.")]
+        public Image TrailingIcon
+        {
+            get { return _trailingIcon; }
+            set { if (_trailingIcon == value) return; _trailingIcon = value; LayoutInner(); Invalidate(); }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue("")]
+        [Description("글자 앞에 흐리게 붙이는 고정 문구입니다. 예: \"https://\", \"$\".")]
+        public string Prefix
+        {
+            get { return _prefix; }
+            set
+            {
+                value = value ?? string.Empty;
+                if (_prefix == value) return;
+                _prefix = value;
+                LayoutInner();
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue("")]
+        [Description("글자 뒤에 흐리게 붙이는 고정 문구입니다. 예: \".com\", \"kg\".")]
+        public string Suffix
+        {
+            get { return _suffix; }
+            set
+            {
+                value = value ?? string.Empty;
+                if (_suffix == value) return;
+                _suffix = value;
+                LayoutInner();
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("글자가 있을 때 오른쪽에 지우기(×) 버튼을 표시할지 여부입니다.")]
+        public bool ShowClearButton
+        {
+            get { return _showClearButton; }
+            set { if (_showClearButton == value) return; _showClearButton = value; LayoutInner(); Invalidate(); }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(AdvValidationState.None)]
+        [Description("검증 상태입니다. 테두리 색과 오른쪽 상태 아이콘으로 표시됩니다.")]
+        public AdvValidationState ValidationState
+        {
+            get { return _validation; }
+            set { if (_validation == value) return; _validation = value; LayoutInner(); Invalidate(); }
+        }
+
+        /// <summary>검증 상태별 색. 테마와 무관한 표준 의미색이다(초록·주황·빨강).</summary>
+        private static Color ValidationColor(AdvValidationState s)
+        {
+            switch (s)
+            {
+                case AdvValidationState.Success: return ColorTranslator.FromHtml("#16A34A");
+                case AdvValidationState.Warning: return ColorTranslator.FromHtml("#D97706");
+                case AdvValidationState.Error:   return ColorTranslator.FromHtml("#DC2626");
+                default: return Color.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 애드온(아이콘·접두/접미·지우기·검증) 자리를 좌우 끝에서 잘라내고,
+        /// 남은 가운데를 안쪽 입력창에 준다. 각 요소의 사각형은 필드에 저장해 그리기·히트에 쓴다.
+        /// </summary>
+        private void PerformAddonLayout()
+        {
+            var content = ContentBounds;
+            int glyph = Math.Min(16, Math.Max(1, content.Height));
+            int gy = content.Top + (content.Height - glyph) / 2;
+
+            _leadingRect = _prefixRect = _suffixRect = Rectangle.Empty;
+            _trailingRect = _clearRect = _validationRect = Rectangle.Empty;
+
+            // 왼쪽: 아이콘 → 접두 문구
+            int left = content.Left;
+            if (_leadingIcon != null)
+            {
+                _leadingRect = new Rectangle(left, gy, glyph, glyph);
+                left += glyph + AddonGap;
+            }
+            if (_prefix.Length > 0)
+            {
+                int w = TextRenderer.MeasureText(_prefix, Font).Width;
+                _prefixRect = new Rectangle(left, content.Top, w, content.Height);
+                left += w + AddonGap;
+            }
+
+            // 오른쪽: (오른→왼) 검증 → 지우기 → 후행 아이콘 → 접미 문구.
+            // 지우기 자리는 글자 유무와 상관없이 예약해 입력 중 폭이 흔들리지 않게 한다.
+            int right = content.Right;
+            if (_validation != AdvValidationState.None)
+            {
+                _validationRect = new Rectangle(right - glyph, gy, glyph, glyph);
+                right -= glyph + AddonGap;
+            }
+            if (_showClearButton && !ReadOnly)
+            {
+                _clearRect = new Rectangle(right - glyph, gy, glyph, glyph);
+                right -= glyph + AddonGap;
+            }
+            if (_trailingIcon != null)
+            {
+                _trailingRect = new Rectangle(right - glyph, gy, glyph, glyph);
+                right -= glyph + AddonGap;
+            }
+            if (_suffix.Length > 0)
+            {
+                int w = TextRenderer.MeasureText(_suffix, Font).Width;
+                _suffixRect = new Rectangle(right - w, content.Top, w, content.Height);
+                right -= w + AddonGap;
+            }
+
+            var area = new Rectangle(left, content.Top, Math.Max(1, right - left), content.Height);
+            if (!_inner.Multiline)
+            {
+                int h = _inner.PreferredHeight;
+                if (h < area.Height) area = new Rectangle(area.X, area.Y + (area.Height - h) / 2, area.Width, h);
+            }
+            _inner.Bounds = area;
+        }
+
+        private bool ClearVisible
+        {
+            get { return _showClearButton && !ReadOnly && Enabled && _inner.TextLength > 0 && !_clearRect.IsEmpty; }
+        }
+
+        private void DrawAddons(Graphics g, AdvTheme theme)
+        {
+            var oldSmoothing = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Color muted = Enabled ? theme.TextMuted : theme.TextDisabled;
+
+            if (_leadingIcon != null && !_leadingRect.IsEmpty) DrawIconImage(g, _leadingIcon, _leadingRect);
+            if (_trailingIcon != null && !_trailingRect.IsEmpty) DrawIconImage(g, _trailingIcon, _trailingRect);
+
+            const TextFormatFlags baseFlags = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding
+                                            | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+            if (_prefix.Length > 0 && !_prefixRect.IsEmpty)
+                TextRenderer.DrawText(g, _prefix, Font, _prefixRect, muted, baseFlags | TextFormatFlags.Left);
+            if (_suffix.Length > 0 && !_suffixRect.IsEmpty)
+                TextRenderer.DrawText(g, _suffix, Font, _suffixRect, muted, baseFlags | TextFormatFlags.Right);
+
+            if (ClearVisible) DrawClear(g, theme);
+            if (!_validationRect.IsEmpty) DrawValidationGlyph(g, _validation);
+
+            g.SmoothingMode = oldSmoothing;
+        }
+
+        /// <summary>아이콘을 비율을 지키며 rect 안에 가운데 맞춰 그린다.</summary>
+        private static void DrawIconImage(Graphics g, Image img, Rectangle rect)
+        {
+            if (img.Width <= 0 || img.Height <= 0) return;
+
+            float scale = Math.Min((float)rect.Width / img.Width, (float)rect.Height / img.Height);
+            int w = Math.Max(1, (int)(img.Width * scale));
+            int h = Math.Max(1, (int)(img.Height * scale));
+            var dest = new Rectangle(rect.Left + (rect.Width - w) / 2, rect.Top + (rect.Height - h) / 2, w, h);
+
+            var old = g.InterpolationMode;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(img, dest);
+            g.InterpolationMode = old;
+        }
+
+        private void DrawClear(Graphics g, AdvTheme theme)
+        {
+            var r = _clearRect;
+            if (_clearHover)
+                using (var b = new SolidBrush(theme.SurfaceHover))
+                using (var path = AdvGraphics.CreateRoundedRect(r, r.Width / 2))
+                    g.FillPath(b, path);
+
+            var box = Rectangle.Inflate(r, -r.Width / 4, -r.Height / 4);
+            Color c = _clearHover ? theme.Text : theme.TextMuted;
+            using (var pen = new Pen(c, 1.5f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            {
+                g.DrawLine(pen, box.Left, box.Top, box.Right, box.Bottom);
+                g.DrawLine(pen, box.Left, box.Bottom, box.Right, box.Top);
+            }
+        }
+
+        private void DrawValidationGlyph(Graphics g, AdvValidationState state)
+        {
+            Color c = ValidationColor(state);
+            var r = _validationRect;
+            var box = Rectangle.Inflate(r, -r.Width / 5, -r.Height / 5);
+            using (var pen = new Pen(c, 1.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+            {
+                if (state == AdvValidationState.Success)
+                {
+                    // 체크 표시
+                    var pts = new[]
+                    {
+                        new Point(box.Left, box.Top + box.Height * 3 / 5),
+                        new Point(box.Left + box.Width * 2 / 5, box.Bottom),
+                        new Point(box.Right, box.Top)
+                    };
+                    g.DrawLines(pen, pts);
+                }
+                else
+                {
+                    // 느낌표 (경고·오류는 색으로 구분한다)
+                    int cx = r.Left + r.Width / 2;
+                    g.DrawLine(pen, cx, box.Top, cx, box.Top + box.Height * 3 / 5);
+                    using (var b = new SolidBrush(c))
+                        g.FillEllipse(b, cx - 1, box.Bottom - 2, 3, 3);
+                }
+            }
+        }
+
+        #endregion
+
         #region 내부 TextBox 이벤트 중계
 
         private void InnerHandleCreated(object sender, EventArgs e) { ApplyPlaceholder(); }
@@ -293,6 +541,8 @@ namespace AdvancedControls.Controls
 
         protected override void OnMouseLeave(EventArgs e)
         {
+            if (_clearHover) { _clearHover = false; Cursor = Cursors.Default; Invalidate(); }
+
             // 커서가 안쪽 TextBox로 들어갔을 뿐이면 컨트롤을 벗어난 것이 아니므로
             // 호버를 유지하고 MouseLeave도 올리지 않는다
             if (MouseStillInside) return;
@@ -302,8 +552,30 @@ namespace AdvancedControls.Controls
 
         #endregion
 
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            bool over = ClearVisible && _clearRect.Contains(e.Location);
+            if (over != _clearHover)
+            {
+                _clearHover = over;
+                Cursor = over ? Cursors.Hand : Cursors.Default;
+                Invalidate();
+            }
+            base.OnMouseMove(e);
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            // 지우기(×) 클릭은 캐럿을 옮기지 않고 내용만 비운다
+            if (e.Button == MouseButtons.Left && ClearVisible && _clearRect.Contains(e.Location))
+            {
+                _inner.Clear();
+                _inner.Focus();
+                _clearHover = false;
+                Invalidate();
+                return;
+            }
+
             // 테두리 여백을 눌러도 입력이 시작되게 한다
             if (e.Button == MouseButtons.Left && !_inner.Focused) _inner.Focus();
             base.OnMouseDown(e);
@@ -326,12 +598,15 @@ namespace AdvancedControls.Controls
 
             Color border;
             if (!Enabled) border = theme.Border;
+            else if (_validation != AdvValidationState.None) border = ValidationColor(_validation);
             else if (ShowsFocusVisual) border = theme.BorderFocus;
             else border = AdvGraphics.Blend(theme.Border, theme.BorderHover, HoverAmount);
 
             AdvFrameRenderer.Draw(e.Graphics, bounds, theme, EffectiveCorners, EffectiveBorderWidth,
                                   fill, Color.Empty, border, CurrentGlow, CurrentElevation,
                                   EffectiveBorderDash);
+
+            DrawAddons(e.Graphics, theme);
 
             base.OnPaint(e);
         }
@@ -405,26 +680,8 @@ namespace AdvancedControls.Controls
 
         private void LayoutInner()
         {
-            var frame = FrameBounds;
-            int bw = EffectiveBorderWidth;
-
-            var area = new Rectangle(
-                frame.Left + bw + Padding.Left,
-                frame.Top + bw + Padding.Top,
-                frame.Width - bw * 2 - Padding.Horizontal,
-                frame.Height - bw * 2 - Padding.Vertical);
-
-            if (area.Width < 1) area.Width = 1;
-            if (area.Height < 1) area.Height = 1;
-
-            // 단일 행 TextBox는 높이를 스스로 정하므로 세로 중앙에 맞춘다
-            if (!_inner.Multiline)
-            {
-                int h = _inner.PreferredHeight;
-                if (h < area.Height) area = new Rectangle(area.X, area.Y + (area.Height - h) / 2, area.Width, h);
-            }
-
-            _inner.Bounds = area;
+            // 애드온(아이콘·접두/접미·지우기·검증) 자리를 잘라내고 남은 가운데를 입력창에 준다.
+            PerformAddonLayout();
         }
 
         /// <summary>단일 행일 때는 글꼴에 맞는 높이로 고정한다. 표준 TextBox와 같은 동작이다.</summary>
@@ -468,6 +725,19 @@ namespace AdvancedControls.Controls
             }
             base.Dispose(disposing);
         }
+    }
+
+    /// <summary>입력창의 검증 상태. 테두리 색과 오른쪽 상태 아이콘으로 표시된다.</summary>
+    public enum AdvValidationState
+    {
+        /// <summary>표시 없음.</summary>
+        None,
+        /// <summary>성공(초록·체크).</summary>
+        Success,
+        /// <summary>경고(주황·느낌표).</summary>
+        Warning,
+        /// <summary>오류(빨강·느낌표).</summary>
+        Error
     }
 
     /// <summary>AdvTextBox가 추가한 속성.</summary>
@@ -543,6 +813,54 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.ScrollBars; }
             set { _owner.ScrollBars = value; }
+        }
+
+        [DefaultValue(null)]
+        [Description("입력창 왼쪽 안에 표시할 아이콘입니다. 비율을 유지하며 맞춰집니다.")]
+        public Image LeadingIcon
+        {
+            get { return _owner.LeadingIcon; }
+            set { _owner.LeadingIcon = value; }
+        }
+
+        [DefaultValue(null)]
+        [Description("입력창 오른쪽 안에 표시할 아이콘입니다. 비율을 유지하며 맞춰집니다.")]
+        public Image TrailingIcon
+        {
+            get { return _owner.TrailingIcon; }
+            set { _owner.TrailingIcon = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("글자 앞에 흐리게 붙이는 고정 문구입니다. 예: \"https://\", \"$\".")]
+        public string Prefix
+        {
+            get { return _owner.Prefix; }
+            set { _owner.Prefix = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("글자 뒤에 흐리게 붙이는 고정 문구입니다. 예: \".com\", \"kg\".")]
+        public string Suffix
+        {
+            get { return _owner.Suffix; }
+            set { _owner.Suffix = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("글자가 있을 때 오른쪽에 지우기(×) 버튼을 표시할지 여부입니다.")]
+        public bool ShowClearButton
+        {
+            get { return _owner.ShowClearButton; }
+            set { _owner.ShowClearButton = value; }
+        }
+
+        [DefaultValue(AdvValidationState.None)]
+        [Description("검증 상태입니다. 테두리 색과 오른쪽 상태 아이콘으로 표시됩니다.")]
+        public AdvValidationState ValidationState
+        {
+            get { return _owner.ValidationState; }
+            set { _owner.ValidationState = value; }
         }
     }
 }

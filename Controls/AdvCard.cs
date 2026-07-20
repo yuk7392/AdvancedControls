@@ -24,6 +24,7 @@ namespace AdvancedControls.Controls
 
         private string _headerText = string.Empty;
         private string _footerText = string.Empty;
+        private Image _headerImage;
         private bool _showHeaderSeparator = true;
         private bool _showFooterSeparator = true;
         private Color _context = Color.Empty;
@@ -43,6 +44,15 @@ namespace AdvancedControls.Controls
                 PerformLayout();
                 Invalidate();
             }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(null)]
+        [Description("머리글 제목 앞에 표시할 아이콘입니다. HeaderText가 있어야 보입니다.")]
+        public Image HeaderImage
+        {
+            get { return _headerImage; }
+            set { if (ReferenceEquals(_headerImage, value)) return; _headerImage = value; Invalidate(); }
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
@@ -172,9 +182,19 @@ namespace AdvancedControls.Controls
                         g.FillRectangle(bg, band);
                 }
                 Color headerColor = neutral ? textColor : palette.SubtleText;
+
+                int hx = bounds.Left + bw + PadH;
+                if (_headerImage != null)
+                {
+                    int isz = Font.Height;
+                    var ir = new Rectangle(hx, bounds.Top + bw + PadV, isz, isz);
+                    DrawFitImage(g, _headerImage, ir);
+                    hx += isz + 6;
+                }
+
                 var rect = new Rectangle(
-                    bounds.Left + bw + PadH, bounds.Top + bw + PadV,
-                    Math.Max(0, bounds.Width - bw * 2 - PadH * 2), Font.Height);
+                    hx, bounds.Top + bw + PadV,
+                    Math.Max(0, bounds.Right - bw - PadH - hx), Font.Height);
                 TextRenderer.DrawText(g, _headerText, Font, rect, headerColor,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
@@ -204,6 +224,22 @@ namespace AdvancedControls.Controls
             }
 
             base.OnPaint(e);
+        }
+
+        /// <summary>아이콘을 비율을 지키며 rect 안에 가운데 맞춰 그린다.</summary>
+        private static void DrawFitImage(Graphics g, Image img, Rectangle rect)
+        {
+            if (img.Width <= 0 || img.Height <= 0) return;
+
+            float scale = Math.Min((float)rect.Width / img.Width, (float)rect.Height / img.Height);
+            int w = Math.Max(1, (int)(img.Width * scale));
+            int h = Math.Max(1, (int)(img.Height * scale));
+            var dest = new Rectangle(rect.Left + (rect.Width - w) / 2, rect.Top + (rect.Height - h) / 2, w, h);
+
+            var old = g.InterpolationMode;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(img, dest);
+            g.InterpolationMode = old;
         }
 
         protected override void OnFontChanged(EventArgs e)
@@ -246,6 +282,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.HeaderText; }
             set { _owner.HeaderText = value; }
+        }
+
+        [DefaultValue(null)]
+        [Description("머리글 제목 앞에 표시할 아이콘입니다. HeaderText가 있어야 보입니다.")]
+        public Image HeaderImage
+        {
+            get { return _owner.HeaderImage; }
+            set { _owner.HeaderImage = value; }
         }
 
         [DefaultValue("")]

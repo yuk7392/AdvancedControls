@@ -104,7 +104,7 @@ namespace AdvancedControls.Controls
             Invalidate();
         }
 
-        private void Layout()
+        private void RebuildLayout()
         {
             _itemRects.Clear();
             var frame = FrameBounds;
@@ -133,7 +133,7 @@ namespace AdvancedControls.Controls
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            if (_itemRects.Count != _items.Count) Layout();
+            if (_itemRects.Count != _items.Count) RebuildLayout();
 
             const TextFormatFlags flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix;
 
@@ -180,7 +180,7 @@ namespace AdvancedControls.Controls
 
         private int HitTestLink(Point p)
         {
-            if (_itemRects.Count != _items.Count) Layout();
+            if (_itemRects.Count != _items.Count) RebuildLayout();
             // 마지막 항목은 링크가 아니므로 제외한다.
             for (int i = 0; i < _itemRects.Count - 1; i++)
                 if (_itemRects[i].Contains(p)) return i;

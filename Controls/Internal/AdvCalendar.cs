@@ -17,13 +17,18 @@ namespace AdvancedControls.Controls.Internal
         private const int Rows = 6;
         private const int HeaderHeight = 32;
         private const int WeekdayHeight = 22;
+        private const int NavW = 20;                 // 머리글 이동 버튼 폭
+        public const int TodayFooterHeight = 34;     // "오늘" 버튼 영역 높이(외부에서 크기 계산에 쓴다)
 
         private AdvTheme _theme;
         private DateTime _viewMonth;
         private DateTime _selected;
         private DateTime _minDate = new DateTime(1753, 1, 1);
         private DateTime _maxDate = new DateTime(9998, 12, 31);
+        private bool _showToday = true;
         private int _hoverDay = -1;
+        private int _hoverNav = -1;   // 0 prevYear · 1 prevMonth · 2 nextMonth · 3 nextYear
+        private bool _hoverToday;
 
         public event EventHandler<DateEventArgs> DateChosen;
 
@@ -68,11 +73,20 @@ namespace AdvancedControls.Controls.Internal
             }
         }
 
+        /// <summary>하단에 "오늘" 버튼을 보일지 여부.</summary>
+        public bool ShowToday
+        {
+            get { return _showToday; }
+            set { _showToday = value; Invalidate(); }
+        }
+
+        private int FooterArea { get { return _showToday ? TodayFooterHeight : 0; } }
+
         private int CellWidth { get { return Width / Columns; } }
 
         private int CellHeight
         {
-            get { return Math.Max(1, (Height - HeaderHeight - WeekdayHeight) / Rows); }
+            get { return Math.Max(1, (Height - HeaderHeight - WeekdayHeight - FooterArea) / Rows); }
         }
 
         /// <summary>이번 달 1일이 놓이는 칸 번호(일요일 시작).</summary>
@@ -81,8 +95,44 @@ namespace AdvancedControls.Controls.Internal
             get { return (int)_viewMonth.DayOfWeek; }
         }
 
-        private Rectangle PrevBounds { get { return new Rectangle(4, 4, 24, HeaderHeight - 8); } }
-        private Rectangle NextBounds { get { return new Rectangle(Width - 28, 4, 24, HeaderHeight - 8); } }
+        // 머리글: [«년] [‹월] ── 년월 ── [월›] [년»]
+        private Rectangle PrevYearBounds { get { return new Rectangle(4, 4, NavW, HeaderHeight - 8); } }
+        private Rectangle PrevMonthBounds { get { return new Rectangle(4 + NavW + 2, 4, NavW, HeaderHeight - 8); } }
+        private Rectangle NextYearBounds { get { return new Rectangle(Width - 4 - NavW, 4, NavW, HeaderHeight - 8); } }
+        private Rectangle NextMonthBounds { get { return new Rectangle(Width - 4 - NavW * 2 - 2, 4, NavW, HeaderHeight - 8); } }
+
+        private Rectangle NavBounds(int i)
+        {
+            switch (i)
+            {
+                case 0: return PrevYearBounds;
+                case 1: return PrevMonthBounds;
+                case 2: return NextMonthBounds;
+                default: return NextYearBounds;
+            }
+        }
+
+        private Rectangle FooterBounds
+        {
+            get { return new Rectangle(0, Height - TodayFooterHeight, Width, TodayFooterHeight); }
+        }
+
+        /// <summary>"오늘" 글자 버튼 영역(푸터 안에서 글자 폭에 맞춰 가운데).</summary>
+        private Rectangle TodayButtonBounds
+        {
+            get
+            {
+                var f = FooterBounds;
+                var size = TextRenderer.MeasureText(TodayLabel, Font);
+                int w = size.Width + 24, h = f.Height - 10;
+                return new Rectangle(f.Left + (f.Width - w) / 2, f.Top + (f.Height - h) / 2, w, h);
+            }
+        }
+
+        private string TodayLabel
+        {
+            get { return "오늘 (" + DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.CurrentCulture) + ")"; }
+        }
 
         private Rectangle CellBounds(int cell)
         {
@@ -113,22 +163,29 @@ namespace AdvancedControls.Controls.Internal
             using (var back = new SolidBrush(_theme.InputBackground))
                 g.FillRectangle(back, ClientRectangle);
 
-            // 머리글: 이전 · 년월 · 다음
+            // 머리글: [«년] [‹월] ── 년월 ── [월›] [년»]
+            int titleLeft = PrevMonthBounds.Right + 2;
+            int titleRight = NextMonthBounds.Left - 2;
             var title = _viewMonth.ToString("yyyy년 M월", CultureInfo.CurrentCulture);
             TextRenderer.DrawText(g, title, Font,
-                new Rectangle(28, 0, Width - 56, HeaderHeight), _theme.Text,
+                new Rectangle(titleLeft, 0, Math.Max(0, titleRight - titleLeft), HeaderHeight), _theme.Text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
               | TextFormatFlags.NoPrefix);
 
-            DrawChevron(g, PrevBounds, true);
-            DrawChevron(g, NextBounds, false);
+            DrawNav(g, 0, true, true);    // «  이전 년
+            DrawNav(g, 1, true, false);   // ‹  이전 월
+            DrawNav(g, 2, false, false);  // ›  다음 월
+            DrawNav(g, 3, false, true);   // »  다음 년
 
-            // 요일 줄
+            // 요일 줄 (일요일=빨강, 토요일=파랑, 나머지는 흐리게)
             var names = CultureInfo.CurrentCulture.DateTimeFormat.ShortestDayNames;
             for (int c = 0; c < Columns; c++)
             {
                 var r = new Rectangle(c * CellWidth, HeaderHeight, CellWidth, WeekdayHeight);
-                TextRenderer.DrawText(g, names[c], Font, r, _theme.TextMuted,
+                Color head = c == 0 ? _theme.SundayText
+                           : c == Columns - 1 ? _theme.SaturdayText
+                           : _theme.TextMuted;
+                TextRenderer.DrawText(g, names[c], Font, r, head,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                   | TextFormatFlags.NoPrefix);
             }
@@ -144,7 +201,17 @@ namespace AdvancedControls.Controls.Internal
                 var r = CellBounds(cell);
                 bool enabled = InRange(date);
                 bool isSelected = date == _selected;
-                Color fore = enabled ? _theme.Text : _theme.TextDisabled;
+
+                // 주말은 일요일 빨강·토요일 파랑. 범위 밖(비활성)은 흐린 색을 그대로 둔다.
+                Color fore;
+                if (!enabled) fore = _theme.TextDisabled;
+                else
+                {
+                    int col = cell % Columns;
+                    fore = col == 0 ? _theme.SundayText
+                         : col == Columns - 1 ? _theme.SaturdayText
+                         : _theme.Text;
+                }
 
                 if (isSelected)
                 {
@@ -176,17 +243,55 @@ namespace AdvancedControls.Controls.Internal
                   | TextFormatFlags.NoPrefix);
             }
 
+            if (_showToday) DrawFooter(g);
+
             base.OnPaint(e);
         }
 
-        private void DrawChevron(Graphics g, Rectangle area, bool left)
+        private void DrawNav(Graphics g, int index, bool left, bool year)
         {
-            // 남는 1px을 어느 쪽에 줄지 정해 좌우 여백을 맞춘다(정수 나눗셈이라 그냥 두면 1px 치우친다)
-            var centered = new Rectangle(area.Left + 1, area.Top, area.Width, area.Height);
+            var area = NavBounds(index);
 
-            AdvGraphics.DrawChevron(g, centered,
-                left ? AdvGraphics.ChevronDirection.Left : AdvGraphics.ChevronDirection.Right,
-                _theme.TextMuted, 9, 5, 1.6f, 0);
+            if (_hoverNav == index)
+            {
+                using (var path = AdvGraphics.CreateRoundedRect(area, new AdvCorners(4)))
+                using (var b = new SolidBrush(_theme.SurfaceHover))
+                    g.FillPath(b, path);
+            }
+
+            var dir = left ? AdvGraphics.ChevronDirection.Left : AdvGraphics.ChevronDirection.Right;
+            var color = _hoverNav == index ? _theme.Text : _theme.TextMuted;
+
+            if (year)
+            {
+                // 겹친 셰브론 두 개(«, »)로 년 이동을 나타낸다
+                AdvGraphics.DrawChevron(g, area, dir, color, 8, 4, 1.5f, -3);
+                AdvGraphics.DrawChevron(g, area, dir, color, 8, 4, 1.5f, 2);
+            }
+            else
+            {
+                AdvGraphics.DrawChevron(g, area, dir, color, 8, 5, 1.6f, 0);
+            }
+        }
+
+        private void DrawFooter(Graphics g)
+        {
+            var f = FooterBounds;
+
+            // 위쪽에 구분선
+            using (var pen = new Pen(_theme.Border))
+                g.DrawLine(pen, f.Left + 6, f.Top, f.Right - 6, f.Top);
+
+            var btn = TodayButtonBounds;
+            if (_hoverToday)
+            {
+                using (var path = AdvGraphics.CreateRoundedRect(btn, new AdvCorners(4)))
+                using (var b = new SolidBrush(_theme.SurfaceHover))
+                    g.FillPath(b, path);
+            }
+
+            TextRenderer.DrawText(g, TodayLabel, Font, btn, _theme.Accent,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
 
         private int CellFromPoint(Point p)
@@ -202,16 +307,30 @@ namespace AdvancedControls.Controls.Internal
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            int nav = -1;
+            for (int i = 0; i < 4; i++)
+                if (NavBounds(i).Contains(e.Location)) { nav = i; break; }
+
+            bool today = _showToday && TodayButtonBounds.Contains(e.Location);
+
             int cell = CellFromPoint(e.Location);
             if (cell >= 0 && DateFromCell(cell) == DateTime.MinValue) cell = -1;
 
-            if (cell != _hoverDay) { _hoverDay = cell; Invalidate(); }
+            if (nav != _hoverNav || today != _hoverToday || cell != _hoverDay)
+            {
+                _hoverNav = nav; _hoverToday = today; _hoverDay = cell;
+                Invalidate();
+            }
             base.OnMouseMove(e);
         }
 
         protected override void OnMouseLeave(EventArgs e)
         {
-            if (_hoverDay != -1) { _hoverDay = -1; Invalidate(); }
+            if (_hoverDay != -1 || _hoverNav != -1 || _hoverToday)
+            {
+                _hoverDay = -1; _hoverNav = -1; _hoverToday = false;
+                Invalidate();
+            }
             base.OnMouseLeave(e);
         }
 
@@ -219,8 +338,12 @@ namespace AdvancedControls.Controls.Internal
         {
             if (e.Button != MouseButtons.Left) { base.OnMouseDown(e); return; }
 
-            if (PrevBounds.Contains(e.Location)) { ShiftMonth(-1); base.OnMouseDown(e); return; }
-            if (NextBounds.Contains(e.Location)) { ShiftMonth(1); base.OnMouseDown(e); return; }
+            if (PrevYearBounds.Contains(e.Location)) { ShiftYear(-1); base.OnMouseDown(e); return; }
+            if (PrevMonthBounds.Contains(e.Location)) { ShiftMonth(-1); base.OnMouseDown(e); return; }
+            if (NextMonthBounds.Contains(e.Location)) { ShiftMonth(1); base.OnMouseDown(e); return; }
+            if (NextYearBounds.Contains(e.Location)) { ShiftYear(1); base.OnMouseDown(e); return; }
+
+            if (_showToday && TodayButtonBounds.Contains(e.Location)) { PickToday(); base.OnMouseDown(e); return; }
 
             int cell = CellFromPoint(e.Location);
             if (cell < 0) { base.OnMouseDown(e); return; }
@@ -248,6 +371,31 @@ namespace AdvancedControls.Controls.Internal
             _viewMonth = next;
             _hoverDay = -1;
             Invalidate();
+        }
+
+        /// <summary>년을 옮긴다. 범위를 넘어가면 예외가 나므로 미리 막는다.</summary>
+        private void ShiftYear(int delta)
+        {
+            var next = _viewMonth.AddYears(delta);
+            if (next < new DateTime(1753, 1, 1) || next > new DateTime(9998, 12, 1)) return;
+
+            _viewMonth = next;
+            _hoverDay = -1;
+            Invalidate();
+        }
+
+        /// <summary>"오늘"을 선택한다. 범위 밖이면 무시한다. 선택과 동시에 DateChosen을 낸다(팝업 닫힘).</summary>
+        private void PickToday()
+        {
+            var today = DateTime.Today;
+            if (!InRange(today)) return;
+
+            _selected = today;
+            _viewMonth = new DateTime(today.Year, today.Month, 1);
+            Invalidate();
+
+            var handler = DateChosen;
+            if (handler != null) handler(this, new DateEventArgs(today));
         }
 
         internal class DateEventArgs : EventArgs

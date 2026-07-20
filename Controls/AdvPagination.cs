@@ -19,7 +19,7 @@ namespace AdvancedControls.Controls
     [Description("페이지 번호를 나열하는 페이지네이션 컨트롤입니다.")]
     public class AdvPagination : AdvControlBase
     {
-        private enum CellKind { Prev, Page, Next }
+        private enum CellKind { Prev, Page, Next, Ellipsis }
 
         private struct Cell
         {
@@ -116,16 +116,69 @@ namespace AdvancedControls.Controls
 
             AddCell(ref x, CellKind.Prev, 0, MinCell, h, _currentPage > 1);
 
-            for (int p = 1; p <= _pageCount; p++)
+            // 전 페이지를 다 그리지 않고 양끝 + 현재 주변만 창으로 보여준다.
+            // 페이지가 많아도 셀 수가 일정하게 유지되어 잘리지 않고, 매번 전 페이지를
+            // 측정하던 낭비도 사라진다. 사이가 벌어진 곳에는 생략부호(…) 셀을 끼운다.
+            foreach (int p in BuildPageWindow())
             {
-                var size = TextRenderer.MeasureText(p.ToString(), Font);
-                int w = Math.Max(MinCell, size.Width + CellPadH * 2);
-                AddCell(ref x, CellKind.Page, p, w, h, true);
+                if (p < 0)
+                {
+                    AddCell(ref x, CellKind.Ellipsis, 0, MinCell, h, false);
+                }
+                else
+                {
+                    var size = TextRenderer.MeasureText(p.ToString(), Font);
+                    int w = Math.Max(MinCell, size.Width + CellPadH * 2);
+                    AddCell(ref x, CellKind.Page, p, w, h, true);
+                }
             }
 
             AddCell(ref x, CellKind.Next, 0, MinCell, h, _currentPage < _pageCount);
 
             if (_focusIndex >= _cells.Count) _focusIndex = -1;
+        }
+
+        /// <summary>
+        /// 표시할 페이지 번호 목록. 음수는 생략부호(…) 자리를 뜻한다.
+        /// 양끝 <c>Boundary</c>개와 현재 페이지 좌우 <c>Sibling</c>개를 항상 보여준다.
+        /// </summary>
+        private System.Collections.Generic.List<int> BuildPageWindow()
+        {
+            const int Boundary = 1;   // 양끝에 고정으로 보일 페이지 수
+            const int Sibling = 1;    // 현재 페이지 좌우로 보일 수
+            var result = new System.Collections.Generic.List<int>();
+
+            int total = _pageCount;
+            // 창(양끝 + 현재±Sibling + 생략 2칸)보다 전체가 작으면 그냥 전부 보인다
+            int windowMax = Boundary * 2 + Sibling * 2 + 3;
+            if (total <= windowMax)
+            {
+                for (int p = 1; p <= total; p++) result.Add(p);
+                return result;
+            }
+
+            // 현재 주변 창의 시작·끝. 처음/끝 근처에서도 창이 뒤집히지 않도록 양끝에서 밀어낸다.
+            int siblingsStart = Math.Max(
+                Math.Min(_currentPage - Sibling, total - Boundary - Sibling * 2 - 1),
+                Boundary + 2);
+            int siblingsEnd = Math.Min(
+                Math.Max(_currentPage + Sibling, Boundary + Sibling * 2 + 2),
+                total - Boundary - 1);
+
+            for (int p = 1; p <= Boundary; p++) result.Add(p);
+
+            // 왼쪽: 사이가 2 이상 벌어지면 …, 딱 1칸이면 생략 대신 그 페이지를 직접 보인다
+            if (siblingsStart > Boundary + 2) result.Add(-1);
+            else if (Boundary + 1 < total - Boundary) result.Add(Boundary + 1);
+
+            for (int p = siblingsStart; p <= siblingsEnd; p++) result.Add(p);
+
+            if (siblingsEnd < total - Boundary - 1) result.Add(-1);
+            else if (total - Boundary > Boundary) result.Add(total - Boundary);
+
+            for (int p = total - Boundary + 1; p <= total; p++) result.Add(p);
+
+            return result;
         }
 
         private void AddCell(ref int x, CellKind kind, int page, int w, int h, bool enabled)
@@ -153,6 +206,15 @@ namespace AdvancedControls.Controls
             for (int i = 0; i < _cells.Count; i++)
             {
                 var cell = _cells[i];
+
+                // 생략부호는 버튼 상자 없이 흐린 … 만 그린다
+                if (cell.Kind == CellKind.Ellipsis)
+                {
+                    TextRenderer.DrawText(g, "…", Font, cell.Bounds, theme.TextMuted,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                    continue;
+                }
+
                 bool active = cell.Kind == CellKind.Page && cell.Page == _currentPage;
                 bool hovered = i == _hover && cell.Enabled && !active;
 

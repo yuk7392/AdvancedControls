@@ -40,6 +40,9 @@ namespace AdvancedControls.Controls
         private int _decimalPlaces;
         private bool _thousandsSeparator;
         private bool _syncing;
+        private string _prefix = string.Empty;
+        private string _suffix = string.Empty;
+        private Rectangle _prefixRect, _suffixRect;
 
         /// <summary>0 = 없음, 1 = 위쪽, 2 = 아래쪽.</summary>
         private int _hotSpin;
@@ -190,6 +193,50 @@ namespace AdvancedControls.Controls
             }
         }
 
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue("")]
+        [Description("숫자 앞에 흐리게 붙이는 고정 문구입니다. 예: \"$\".")]
+        public string Prefix
+        {
+            get { return _prefix; }
+            set
+            {
+                value = value ?? string.Empty;
+                if (_prefix == value) return;
+                _prefix = value;
+                ReapplyMinimumSize();
+                LayoutEditor();
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue("")]
+        [Description("숫자 뒤에 흐리게 붙이는 고정 문구입니다. 예: \"kg\", \"%\".")]
+        public string Suffix
+        {
+            get { return _suffix; }
+            set
+            {
+                value = value ?? string.Empty;
+                if (_suffix == value) return;
+                _suffix = value;
+                ReapplyMinimumSize();
+                LayoutEditor();
+                Invalidate();
+            }
+        }
+
+        private int PrefixWidth
+        {
+            get { return _prefix.Length > 0 ? TextRenderer.MeasureText(_prefix, Font).Width + 2 : 0; }
+        }
+
+        private int SuffixWidth
+        {
+            get { return _suffix.Length > 0 ? TextRenderer.MeasureText(_suffix, Font).Width + 2 : 0; }
+        }
+
         private decimal Clamp(decimal v)
         {
             if (v < _minimum) return _minimum;
@@ -225,6 +272,7 @@ namespace AdvancedControls.Controls
 
                 return Math.Max(lo, hi)
                      + 4 + SpinWidth                    // TextBounds가 증감 영역에 내주는 몫
+                     + PrefixWidth + SuffixWidth        // 접두·접미 문구 몫
                      + ChromeSize.Width;
             }
         }
@@ -315,6 +363,13 @@ namespace AdvancedControls.Controls
             if (_editor == null) return;
 
             var area = TextBounds;
+
+            // 접두는 왼쪽, 접미는 오른쪽(증감 버튼 앞)에서 잘라내고 남은 가운데를 입력창에 준다
+            int pw = PrefixWidth, sw = SuffixWidth;
+            _prefixRect = new Rectangle(area.Left, area.Top, pw, area.Height);
+            _suffixRect = new Rectangle(area.Right - sw, area.Top, sw, area.Height);
+            area = new Rectangle(area.Left + pw, area.Top, Math.Max(1, area.Width - pw - sw), area.Height);
+
             if (area.Width < 1) area.Width = 1;
             if (area.Height < 1) area.Height = 1;
 
@@ -401,6 +456,17 @@ namespace AdvancedControls.Controls
 
             DrawSpin(g, UpBounds, true, _hotSpin == 1, atMax, theme);
             DrawSpin(g, DownBounds, false, _hotSpin == 2, atMin, theme);
+
+            if (_prefix.Length > 0 || _suffix.Length > 0)
+            {
+                Color muted = Enabled ? theme.TextMuted : theme.TextDisabled;
+                const TextFormatFlags f = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding
+                                        | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+                if (_prefix.Length > 0)
+                    TextRenderer.DrawText(g, _prefix, Font, _prefixRect, muted, f | TextFormatFlags.Left);
+                if (_suffix.Length > 0)
+                    TextRenderer.DrawText(g, _suffix, Font, _suffixRect, muted, f | TextFormatFlags.Right);
+            }
 
             base.OnPaint(e);
         }
@@ -602,6 +668,22 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.ThousandsSeparator; }
             set { _owner.ThousandsSeparator = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("숫자 앞에 흐리게 붙이는 고정 문구입니다. 예: \"$\".")]
+        public string Prefix
+        {
+            get { return _owner.Prefix; }
+            set { _owner.Prefix = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("숫자 뒤에 흐리게 붙이는 고정 문구입니다. 예: \"kg\", \"%\".")]
+        public string Suffix
+        {
+            get { return _owner.Suffix; }
+            set { _owner.Suffix = value; }
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using AdvancedControls.Controls.Internal;
 using AdvancedControls.Rendering;
@@ -49,12 +50,17 @@ namespace AdvancedControls.Controls
         [Description("선택이 바뀔 때 발생합니다.")]
         public event EventHandler SelectedIndexChanged;
 
+        [Category("Behavior")]
+        [Description("항목의 체크 상태가 바뀔 때 발생합니다. CheckBoxes가 켜져 있어야 합니다.")]
+        public event EventHandler ItemChecked;
+
         public AdvListBox()
         {
             _itemsWrapper = new ObjectCollection(this, _items);
 
             _core = new ListCore(this, _items);
             _core.SelectionChanged += CoreSelectionChanged;
+            _core.CheckChanged += CoreCheckChanged;
 
             // AutoScroll을 쓰면 OS가 시스템 색 스크롤바를 그려 다크 테마에서 흰 띠로 남는다.
             // 뷰포트는 자르는 역할만 하고 스크롤은 직접 그린 막대가 담당한다.
@@ -102,6 +108,45 @@ namespace AdvancedControls.Controls
                 _core.Invalidate();
             }
         }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("각 항목 왼쪽에 체크박스를 표시합니다. 선택과 별개로 여러 항목을 체크할 수 있습니다.")]
+        public bool CheckBoxes
+        {
+            get { return _core.ShowCheckBoxes; }
+            set
+            {
+                if (_core.ShowCheckBoxes == value) return;
+                _core.ShowCheckBoxes = value;
+                RefreshLayout();
+                _core.Invalidate();
+            }
+        }
+
+        /// <summary>체크된 위치들. 오름차순이다.</summary>
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public int[] CheckedIndices
+        {
+            get { return _core.GetCheckedIndices(); }
+        }
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public object[] CheckedItems
+        {
+            get
+            {
+                var idx = _core.GetCheckedIndices();
+                var result = new object[idx.Length];
+                for (int i = 0; i < idx.Length; i++) result[i] = _items[idx[i]];
+                return result;
+            }
+        }
+
+        public bool GetItemChecked(int index) { return _core.IsChecked(index); }
+        public void SetItemChecked(int index, bool value) { _core.SetChecked(index, value, true); }
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -157,6 +202,12 @@ namespace AdvancedControls.Controls
         private void CoreSelectionChanged(object sender, EventArgs e)
         {
             var handler = SelectedIndexChanged;
+            if (handler != null) handler(this, EventArgs.Empty);
+        }
+
+        private void CoreCheckChanged(object sender, EventArgs e)
+        {
+            var handler = ItemChecked;
             if (handler != null) handler(this, EventArgs.Empty);
         }
 
@@ -216,6 +267,31 @@ namespace AdvancedControls.Controls
                                          _viewport.ClientSize.Width,
                                          Math.Max(_viewport.ClientSize.Height, contentHeight));
             _core.Invalidate();
+
+            ApplyRoundedRegion();
+        }
+
+        /// <summary>
+        /// 사각 자식(뷰포트·스크롤바)의 모서리가 둥근 테두리 밖으로 튀어나오지 않도록
+        /// 컨트롤 전체를 둥근 모양으로 잘라 낸다. 테두리(및 그림자)는 OnPaint가 그리므로,
+        /// 잘리지 않게 프레임보다 1px 넉넉히 잡는다. Elevated면 그림자가 잘리지 않도록 자르지 않는다.
+        /// </summary>
+        private void ApplyRoundedRegion()
+        {
+            var old = Region;
+
+            if (Styling.Elevated)
+            {
+                Region = null;
+            }
+            else
+            {
+                var clip = Rectangle.Inflate(FrameBounds, 1, 1);
+                using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
+                    Region = new Region(path);
+            }
+
+            if (old != null) old.Dispose();
         }
 
         /// <summary>휠은 목록 어디에 있든 스크롤로 이어져야 한다.</summary>
@@ -286,7 +362,9 @@ namespace AdvancedControls.Controls
             if (disposing)
             {
                 _core.SelectionChanged -= CoreSelectionChanged;
+                _core.CheckChanged -= CoreCheckChanged;
                 _scrollBar.ValueChanged -= ScrollBarValueChanged;
+                if (Region != null) Region.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -297,18 +375,66 @@ namespace AdvancedControls.Controls
         /// </summary>
         private class ListCore : Control
         {
+            private const int CheckBoxSize = 16;
+            private const int CheckLeftPad = 8;
+
             private readonly AdvListBox _owner;
             private readonly List<object> _items;
             private readonly HashSet<int> _selected = new HashSet<int>();
+            private readonly HashSet<int> _checked = new HashSet<int>();
 
             private int _primary = -1;
             private int _anchor = -1;
             private int _hover = -1;
 
             public event EventHandler SelectionChanged;
+            public event EventHandler CheckChanged;
 
             public AdvSelectionMode Mode { get; set; }
             public int ItemHeight { get; set; }
+            public bool ShowCheckBoxes { get; set; }
+
+            /// <summary>체크박스가 차지하는 왼쪽 폭(체크박스가 없으면 0).</summary>
+            private int CheckGutter
+            {
+                get { return ShowCheckBoxes ? CheckLeftPad + CheckBoxSize : 0; }
+            }
+
+            public bool IsChecked(int index)
+            {
+                return index >= 0 && index < _items.Count && _checked.Contains(index);
+            }
+
+            public int[] GetCheckedIndices()
+            {
+                var list = new List<int>(_checked);
+                list.Sort();
+                return list.ToArray();
+            }
+
+            public void SetChecked(int index, bool value, bool raise)
+            {
+                if (index < 0 || index >= _items.Count) return;
+                bool changed = value ? _checked.Add(index) : _checked.Remove(index);
+                if (!changed) return;
+
+                Invalidate();
+                if (raise) RaiseCheck();
+            }
+
+            private void ToggleCheck(int index)
+            {
+                if (index < 0 || index >= _items.Count) return;
+                if (!_checked.Remove(index)) _checked.Add(index);
+                Invalidate();
+                RaiseCheck();
+            }
+
+            private void RaiseCheck()
+            {
+                var handler = CheckChanged;
+                if (handler != null) handler(this, EventArgs.Empty);
+            }
 
             public ListCore(AdvListBox owner, List<object> items)
             {
@@ -400,6 +526,31 @@ namespace AdvancedControls.Controls
                     Invalidate();
                     Raise();
                 }
+
+                // 체크 위치도 같은 규칙으로 옮긴다 — 두지 않으면 체크가 조용히 다른 항목을 가리킨다
+                int beforeChecked = _checked.Count;
+                bool checkMoved = false;
+
+                if (delta != 0)
+                {
+                    var shiftedC = new List<int>();
+                    foreach (int i in _checked)
+                    {
+                        int s = ShiftOne(i, at, delta);
+                        if (s != i) checkMoved = true;
+                        if (s >= 0) shiftedC.Add(s);
+                    }
+                    _checked.Clear();
+                    foreach (int i in shiftedC) _checked.Add(i);
+                }
+
+                if (_checked.RemoveWhere(i => i < 0 || i >= count) > 0) checkMoved = true;
+
+                if (checkMoved || _checked.Count != beforeChecked)
+                {
+                    Invalidate();
+                    RaiseCheck();
+                }
             }
 
             /// <summary>빠진 자리에 걸린 위치는 -1이 되고, 뒤쪽 위치는 그만큼 당겨진다.</summary>
@@ -471,11 +622,15 @@ namespace AdvancedControls.Controls
                             g.FillRectangle(b, r);
                     }
 
+                    if (ShowCheckBoxes)
+                        DrawItemCheckBox(g, r, _checked.Contains(i), theme);
+
+                    int gutter = CheckGutter;
                     var item = _items[i];
                     string text = item == null ? string.Empty : item.ToString();
 
                     TextRenderer.DrawText(g, text, Font,
-                        new Rectangle(r.X + 8, r.Y, r.Width - 16, r.Height), fore,
+                        new Rectangle(r.X + 8 + gutter, r.Y, r.Width - 16 - gutter, r.Height), fore,
                         TextFormatFlags.Left
                       | TextFormatFlags.VerticalCenter
                       | TextFormatFlags.EndEllipsis
@@ -483,6 +638,44 @@ namespace AdvancedControls.Controls
                 }
 
                 base.OnPaint(e);
+            }
+
+            /// <summary>
+            /// 항목 왼쪽에 체크박스를 그린다. 상자는 항상 입력 배경으로 채우고 체크는 강조색으로 —
+            /// 선택된(강조색) 행 위에서도 대비가 유지된다.
+            /// </summary>
+            private void DrawItemCheckBox(Graphics g, Rectangle row, bool isChecked, AdvTheme theme)
+            {
+                int y = row.Y + (row.Height - CheckBoxSize) / 2;
+                var box = new Rectangle(row.X + CheckLeftPad, y, CheckBoxSize, CheckBoxSize);
+
+                var oldSmooth = g.SmoothingMode;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                using (var path = AdvGraphics.CreateRoundedRect(box, 3))
+                {
+                    using (var b = new SolidBrush(_owner.Enabled ? theme.InputBackground : theme.InputBackgroundDisabled))
+                        g.FillPath(b, path);
+                    Color line = !_owner.Enabled ? theme.TextDisabled : (isChecked ? theme.Accent : theme.Border);
+                    using (var pen = new Pen(line, isChecked ? 1.4f : 1f))
+                        g.DrawPath(pen, path);
+                }
+
+                if (isChecked)
+                {
+                    var inner = Rectangle.Inflate(box, -4, -4);
+                    var pts = new[]
+                    {
+                        new Point(inner.Left, inner.Top + inner.Height / 2),
+                        new Point(inner.Left + inner.Width * 2 / 5, inner.Bottom),
+                        new Point(inner.Right, inner.Top)
+                    };
+                    using (var pen = new Pen(_owner.Enabled ? theme.Accent : theme.TextDisabled, 1.8f)
+                    { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+                        g.DrawLines(pen, pts);
+                }
+
+                g.SmoothingMode = oldSmooth;
             }
 
             protected override void OnMouseMove(MouseEventArgs e)
@@ -506,6 +699,14 @@ namespace AdvancedControls.Controls
 
                 int i = IndexFromPoint(e.Location);
                 if (i < 0) { base.OnMouseDown(e); return; }
+
+                // 체크박스 영역을 누르면 선택은 그대로 두고 체크만 토글한다
+                if (ShowCheckBoxes && e.X < CheckGutter)
+                {
+                    ToggleCheck(i);
+                    base.OnMouseDown(e);
+                    return;
+                }
 
                 if (Mode == AdvSelectionMode.One)
                 {
@@ -558,6 +759,7 @@ namespace AdvancedControls.Controls
                     case Keys.End:
                     case Keys.PageUp:
                     case Keys.PageDown:
+                    case Keys.Space:
                         return true;
                 }
                 return base.IsInputKey(keyData);
@@ -566,6 +768,15 @@ namespace AdvancedControls.Controls
             protected override void OnKeyDown(KeyEventArgs e)
             {
                 if (_items.Count == 0) { base.OnKeyDown(e); return; }
+
+                // 스페이스로 대표 항목의 체크를 토글한다
+                if (e.KeyCode == Keys.Space && ShowCheckBoxes && _primary >= 0)
+                {
+                    ToggleCheck(_primary);
+                    e.Handled = true;
+                    base.OnKeyDown(e);
+                    return;
+                }
 
                 int page = Math.Max(1, Height / Math.Max(1, ItemHeight));
                 int next = _primary;
@@ -686,6 +897,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.SelectionMode; }
             set { _owner.SelectionMode = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("각 항목 왼쪽에 체크박스를 표시합니다. 선택과 별개로 여러 항목을 체크할 수 있습니다.")]
+        public bool CheckBoxes
+        {
+            get { return _owner.CheckBoxes; }
+            set { _owner.CheckBoxes = value; }
         }
     }
 }

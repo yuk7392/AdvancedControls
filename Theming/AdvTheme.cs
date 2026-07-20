@@ -32,6 +32,10 @@ namespace AdvancedControls.Theming
         public Color TextMuted { get; set; }
         public Color TextDisabled { get; set; }
 
+        // 달력 주말 글자색 (일요일=빨강, 토요일=파랑)
+        public Color SundayText { get; set; }
+        public Color SaturdayText { get; set; }
+
         // 강조 — 주 동작 버튼, 선택 표시 등
         public Color Accent { get; set; }
         public Color AccentHover { get; set; }
@@ -115,6 +119,8 @@ namespace AdvancedControls.Theming
                 Text = ColorTranslator.FromHtml("#111827"),
                 TextMuted = ColorTranslator.FromHtml("#6B7280"),
                 TextDisabled = ColorTranslator.FromHtml("#9CA3AF"),
+                SundayText = ColorTranslator.FromHtml("#DC2626"),
+                SaturdayText = ColorTranslator.FromHtml("#2563EB"),
                 Accent = ColorTranslator.FromHtml("#2563EB"),
                 AccentHover = ColorTranslator.FromHtml("#1D4ED8"),
                 AccentPressed = ColorTranslator.FromHtml("#1E40AF"),
@@ -149,6 +155,8 @@ namespace AdvancedControls.Theming
                 Text = ColorTranslator.FromHtml("#F9FAFB"),
                 TextMuted = ColorTranslator.FromHtml("#9CA3AF"),
                 TextDisabled = ColorTranslator.FromHtml("#6B7280"),
+                SundayText = ColorTranslator.FromHtml("#F87171"),
+                SaturdayText = ColorTranslator.FromHtml("#60A5FA"),
                 Accent = ColorTranslator.FromHtml("#3B82F6"),
                 AccentHover = ColorTranslator.FromHtml("#60A5FA"),
                 AccentPressed = ColorTranslator.FromHtml("#2563EB"),

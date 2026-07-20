@@ -40,10 +40,21 @@ namespace AdvancedControls.Controls
             get { return _options ?? (_options = new AdvDateTimePickerOptions(this)); }
         }
         private AdvCalendar _calendar;
+        private ToolStripControlHost _host;
+        private bool _showTodayButton = true;
 
         [Category("Behavior")]
         [Description("선택한 날짜가 바뀔 때 발생합니다.")]
         public event EventHandler ValueChanged;
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(true)]
+        [Description("달력 하단에 \"오늘\" 버튼을 표시할지 여부입니다.")]
+        public bool ShowTodayButton
+        {
+            get { return _showTodayButton; }
+            set { _showTodayButton = value; }
+        }
 
         public AdvDateTimePicker()
         {
@@ -159,7 +170,15 @@ namespace AdvancedControls.Controls
             _calendar.Font = Font;
             _calendar.MinDate = _minDate;
             _calendar.MaxDate = _maxDate;
+            _calendar.ShowToday = _showTodayButton;
             _calendar.Selected = _value;
+
+            // "오늘" 버튼 유무에 따라 높이가 달라지므로 열 때마다 크기를 맞춘다
+            int h = CalendarHeight + (_showTodayButton ? AdvCalendar.TodayFooterHeight : 0);
+            var size = new Size(CalendarWidth, h);
+            _calendar.Size = size;
+            _host.Size = size;
+            _popup.Size = size;
 
             var anchor = PointToScreen(new Point(FrameBounds.Left, FrameBounds.Bottom));
             _popup.Show(anchor);
@@ -184,11 +203,11 @@ namespace AdvancedControls.Controls
             _calendar.Size = new Size(CalendarWidth, CalendarHeight);
             _calendar.DateChosen += CalendarDateChosen;
 
-            var host = new ToolStripControlHost(_calendar);
-            host.Padding = Padding.Empty;
-            host.Margin = Padding.Empty;
-            host.AutoSize = false;
-            host.Size = _calendar.Size;
+            _host = new ToolStripControlHost(_calendar);
+            _host.Padding = Padding.Empty;
+            _host.Margin = Padding.Empty;
+            _host.AutoSize = false;
+            _host.Size = _calendar.Size;
 
             _popup = new ToolStripDropDown();
             _popup.AutoSize = false;
@@ -197,7 +216,7 @@ namespace AdvancedControls.Controls
             _popup.DropShadowEnabled = true;
             _popup.BackColor = EffectiveTheme.InputBackground;
             _popup.Size = _calendar.Size;
-            _popup.Items.Add(host);
+            _popup.Items.Add(_host);
             _popup.Closed += PopupClosed;
         }
 
@@ -390,6 +409,14 @@ namespace AdvancedControls.Controls
             set { _owner.Value = value; }
         }
         public bool ShouldSerializeValue() { return _owner.ShouldSerializeValue(); }
+
+        [DefaultValue(true)]
+        [Description("달력 하단에 \"오늘\" 버튼을 표시할지 여부입니다.")]
+        public bool ShowTodayButton
+        {
+            get { return _owner.ShowTodayButton; }
+            set { _owner.ShowTodayButton = value; }
+        }
 
         [Description("고를 수 있는 가장 이른 날짜입니다.")]
         public DateTime MinDate

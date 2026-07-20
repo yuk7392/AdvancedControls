@@ -17,9 +17,19 @@ namespace AdvancedControls.Rendering
         public static GraphicsPath CreateRoundedRect(Rectangle bounds, AdvCorners corners)
         {
             var path = new GraphicsPath();
+            BuildRoundedRect(path, bounds, corners);
+            return path;
+        }
 
+        /// <summary>
+        /// 기존 <see cref="GraphicsPath"/>에 둥근 사각형을 채워 넣는다.
+        /// 경로를 재사용해 프레임마다 새로 할당하지 않으려는 그리기 경로에서 쓴다.
+        /// 호출 전에 필요하면 <see cref="GraphicsPath.Reset"/>을 부른다.
+        /// </summary>
+        internal static void BuildRoundedRect(GraphicsPath path, Rectangle bounds, AdvCorners corners)
+        {
             if (bounds.Width <= 0 || bounds.Height <= 0)
-                return path;
+                return;
 
             // 반경이 변의 절반을 넘으면 호가 서로 겹쳐 도형이 뒤집힌다
             int limit = Math.Min(bounds.Width, bounds.Height) / 2;
@@ -28,7 +38,7 @@ namespace AdvancedControls.Rendering
             if (c.IsZero)
             {
                 path.AddRectangle(bounds);
-                return path;
+                return;
             }
 
             int l = bounds.Left, t = bounds.Top, r = bounds.Right, b = bounds.Bottom;
@@ -55,7 +65,6 @@ namespace AdvancedControls.Rendering
                 path.AddArc(l, t, c.TopLeft * 2, c.TopLeft * 2, 180, 90);
 
             path.CloseFigure();
-            return path;
         }
 
         public static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
@@ -143,6 +152,12 @@ namespace AdvancedControls.Rendering
             return new LinearGradientBrush(r, start, end, angleDegrees);
         }
 
+        // 그림자는 매 프레임(호버·글로우 전환 중 최대 66fps) 다시 그려지므로,
+        // 블러 레이어마다 경로·브러시를 새로 만들지 않고 스레드마다 하나씩 재사용한다.
+        // WinForms 그리기는 UI 스레드 전용이라 [ThreadStatic]이면 충돌이 없다.
+        [ThreadStatic] private static GraphicsPath _shadowPath;
+        [ThreadStatic] private static SolidBrush _shadowBrush;
+
         /// <summary>
         /// 도형 바깥에 그림자를 근사한다. 경로를 조금씩 넓히며 반투명하게 겹친다.
         /// </summary>
@@ -155,6 +170,9 @@ namespace AdvancedControls.Rendering
                 bounds.Y + shadow.OffsetY,
                 bounds.Width,
                 bounds.Height);
+
+            var path = _shadowPath ?? (_shadowPath = new GraphicsPath());
+            var brush = _shadowBrush ?? (_shadowBrush = new SolidBrush(Color.Black));
 
             for (int i = shadow.Blur; i >= 1; i--)
             {
@@ -169,9 +187,10 @@ namespace AdvancedControls.Rendering
                     corners.TopLeft + i, corners.TopRight + i,
                     corners.BottomRight + i, corners.BottomLeft + i);
 
-                using (var path = CreateRoundedRect(layer, layerCorners))
-                using (var brush = new SolidBrush(Color.FromArgb(alpha, shadow.Color)))
-                    g.FillPath(brush, path);
+                path.Reset();
+                BuildRoundedRect(path, layer, layerCorners);
+                brush.Color = Color.FromArgb(alpha, shadow.Color);
+                g.FillPath(brush, path);
             }
         }
 

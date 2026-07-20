@@ -28,6 +28,13 @@ namespace AdvancedControls.Controls
         private readonly AdvDropDownSettings _dropDown = new AdvDropDownSettings();
         private AdvComboBoxOptions _options;
 
+        // 타입어헤드 필터: 팝업은 _items가 아니라 걸러진 _visible를 보여주고,
+        // _map[보이는위치] = 실제위치 로 되돌린다. 필터가 없으면 _visible는 _items를 그대로 담는다.
+        private readonly List<object> _visible = new List<object>();
+        private readonly List<int> _map = new List<int>();
+        private string _filter = string.Empty;
+        private bool _autoFilter;
+
         private AdvComboPopup _popup;
         private TextBox _editor;
         private int _selectedIndex = -1;
@@ -88,6 +95,20 @@ namespace AdvancedControls.Controls
             get { return _dropDown; }
         }
 
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("편집형에서 입력한 글자가 포함된 항목만 드롭다운에 남깁니다(타입어헤드).")]
+        public bool AutoFilter
+        {
+            get { return _autoFilter; }
+            set
+            {
+                if (_autoFilter == value) return;
+                _autoFilter = value;
+                if (!value) ClearFilter();
+            }
+        }
+
         /// <summary>편집형일 때 안에 올라간 표준 TextBox. 목록 선택형이면 null이다.</summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -95,6 +116,75 @@ namespace AdvancedControls.Controls
         {
             get { return _editor; }
         }
+
+        #region 타입어헤드 필터
+
+        /// <summary>현재 필터로 _visible/_map을 다시 만든다. 필터가 비면 _items를 그대로 담는다.</summary>
+        private void RebuildVisible()
+        {
+            _visible.Clear();
+            _map.Clear();
+
+            bool filtering = _autoFilter && _filter.Length > 0;
+            for (int i = 0; i < _items.Count; i++)
+            {
+                if (filtering &&
+                    GetItemText(_items[i]).IndexOf(_filter, StringComparison.CurrentCultureIgnoreCase) < 0)
+                    continue;
+
+                _visible.Add(_items[i]);
+                _map.Add(i);
+            }
+        }
+
+        /// <summary>실제 위치를 팝업이 보여주는 위치로 바꾼다. 걸러져 안 보이면 -1.</summary>
+        private int RealToVisible(int real)
+        {
+            return real < 0 ? -1 : _map.IndexOf(real);
+        }
+
+        private void ClearFilter()
+        {
+            if (_filter.Length == 0) return;
+            _filter = string.Empty;
+            RebuildVisible();
+        }
+
+        /// <summary>편집창 글자가 바뀌면 목록을 걸러 다시 보여준다. 결과가 없으면 접는다.</summary>
+        private void ApplyFilter(string text)
+        {
+            text = text ?? string.Empty;
+            if (_filter == text) return;
+
+            _filter = text;
+            RebuildVisible();
+
+            if (IsDroppedDown)
+            {
+                if (_visible.Count == 0) HideDropDown();
+                else RefreshOpenPopup();
+            }
+            else if (_filter.Length > 0 && _visible.Count > 0)
+            {
+                OpenPopup();
+                // 팝업이 떠도 계속 입력할 수 있도록 편집창에 포커스를 돌려 둔다
+                if (_editor != null && !_editor.Focused) _editor.Focus();
+            }
+        }
+
+        /// <summary>열려 있는 팝업을 현재 _visible에 맞춰 다시 크기·선택을 맞춘다.</summary>
+        private void RefreshOpenPopup()
+        {
+            if (_popup == null) return;
+
+            _popup.List.SelectedIndex = RealToVisible(_selectedIndex);
+            _popup.List.HoverIndex = -1;
+            _popup.SetSize(FrameBounds.Width, _visible.Count, _dropDown.MaxItems);
+            _popup.EnsureVisible(RealToVisible(_selectedIndex));
+            _popup.List.Invalidate();
+        }
+
+        #endregion
 
         protected override bool ShowsFocusVisual
         {
@@ -127,7 +217,7 @@ namespace AdvancedControls.Controls
                 if (_selectedIndex == value) return;
 
                 _selectedIndex = value;
-                if (_popup != null) _popup.List.SelectedIndex = value;
+                if (_popup != null) _popup.List.SelectedIndex = RealToVisible(value);
 
                 SyncEditorFromSelection();
                 Invalidate();
@@ -344,7 +434,8 @@ namespace AdvancedControls.Controls
             }
 
             _selectedIndex = restored;
-            if (_popup != null) _popup.List.SelectedIndex = restored;
+            RebuildVisible();
+            if (_popup != null) _popup.List.SelectedIndex = RealToVisible(restored);
 
             SyncEditorFromSelection();
             Invalidate();
@@ -535,12 +626,15 @@ namespace AdvancedControls.Controls
         {
             if (!_syncingEditor)
             {
+                // 타입어헤드가 켜져 있으면 입력 글자로 목록을 걸러 다시 보여준다
+                if (_autoFilter) ApplyFilter(_editor.Text);
+
                 // 직접 입력한 내용이 목록에 없으면 선택 없음으로 둔다
                 int match = _items.FindIndex(o => o != null && GetItemText(o) == _editor.Text);
                 if (match != _selectedIndex)
                 {
                     _selectedIndex = match;
-                    if (_popup != null) _popup.List.SelectedIndex = match;
+                    if (_popup != null) _popup.List.SelectedIndex = RealToVisible(match);
                     OnSelectedIndexChanged(EventArgs.Empty);
                 }
             }
@@ -578,21 +672,31 @@ namespace AdvancedControls.Controls
 
         public void ShowDropDown()
         {
-            if (IsDroppedDown || _items.Count == 0 || !Enabled) return;
+            ClearFilter();      // 사용자가 직접 열면 전체 목록을 보여준다
+            OpenPopup();
+        }
+
+        /// <summary>현재 _visible(걸러진 목록)로 팝업을 연다. 결과가 없으면 열지 않는다.</summary>
+        private void OpenPopup()
+        {
+            if (IsDroppedDown || !Enabled) return;
+
+            RebuildVisible();
+            if (_visible.Count == 0) return;
 
             EnsurePopup();
 
             _popup.ApplyTheme(EffectiveTheme);
             _popup.List.Font = Font;
             _popup.List.ItemHeight = ItemHeight;
-            _popup.List.SelectedIndex = _selectedIndex;
+            _popup.List.SelectedIndex = RealToVisible(_selectedIndex);
             _popup.List.HoverIndex = -1;
-            _popup.SetSize(FrameBounds.Width, _items.Count, _dropDown.MaxItems);
+            _popup.SetSize(FrameBounds.Width, _visible.Count, _dropDown.MaxItems);
 
             // 프레임 왼쪽 아래에 붙인다. 화면 아래가 좁으면 ToolStripDropDown이 위로 뒤집는다
             var anchor = PointToScreen(new Point(FrameBounds.Left, FrameBounds.Bottom));
             _popup.Show(anchor);
-            _popup.EnsureVisible(_selectedIndex);
+            _popup.EnsureVisible(RealToVisible(_selectedIndex));
 
             Invalidate();
             RaiseIfSet(DropDownOpened);
@@ -611,7 +715,7 @@ namespace AdvancedControls.Controls
         {
             if (_popup != null) return;
 
-            _popup = new AdvComboPopup(_items, EffectiveTheme, Font, ItemHeight);
+            _popup = new AdvComboPopup(_visible, EffectiveTheme, Font, ItemHeight);
             _popup.List.TextProvider = GetItemText;
             _popup.ItemChosen += PopupItemChosen;
             _popup.Closed += PopupClosed;
@@ -619,7 +723,9 @@ namespace AdvancedControls.Controls
 
         private void PopupItemChosen(object sender, AdvDropDownList.ItemEventArgs e)
         {
-            SelectedIndex = e.Index;
+            int real = (e.Index >= 0 && e.Index < _map.Count) ? _map[e.Index] : -1;
+            SelectedIndex = real;
+            ClearFilter();
             HideDropDown();
         }
 
@@ -768,7 +874,7 @@ namespace AdvancedControls.Controls
             if (next > _items.Count - 1) next = _items.Count - 1;
 
             SelectedIndex = next;
-            if (IsDroppedDown) _popup.EnsureVisible(next);
+            if (IsDroppedDown) _popup.EnsureVisible(RealToVisible(next));
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -973,6 +1079,14 @@ namespace AdvancedControls.Controls
         public AdvDropDownSettings DropDown
         {
             get { return _owner.DropDown; }
+        }
+
+        [DefaultValue(false)]
+        [Description("편집형에서 입력한 글자가 포함된 항목만 드롭다운에 남깁니다(타입어헤드).")]
+        public bool AutoFilter
+        {
+            get { return _owner.AutoFilter; }
+            set { _owner.AutoFilter = value; }
         }
 
         [Description("목록에 표시할 항목입니다. DataSource를 지정하면 직접 넣을 수 없습니다.")]

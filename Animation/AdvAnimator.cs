@@ -1,31 +1,27 @@
 using System;
-using System.Windows.Forms;
 
 namespace AdvancedControls.Animation
 {
     /// <summary>
     /// 0~1 사이 값을 목표치까지 부드럽게 이동시킨다. CSS의 transition에 대응한다.
-    /// UI 스레드 타이머를 쓰므로 <see cref="ValueChanged"/>는 항상 UI 스레드에서 발생한다.
+    /// 자체 타이머를 두지 않고 <see cref="AdvAnimationDriver"/>가 함께 굴린다 —
+    /// 값 갱신(<see cref="ValueChanged"/>)은 항상 UI 스레드에서 발생한다.
     /// </summary>
     public sealed class AdvAnimator : IDisposable
     {
-        private const int TickMs = 15;   // 약 66fps
-
-        private readonly Timer _timer;
         private float _value;
         private float _target;
         private int _duration;
         private bool _disposed;
         private bool _looping;
+        private bool _running;    // 드라이버에 등록되어 도는 중인지
+        private AdvEasing _easing = AdvEasing.Smooth;
 
         public event EventHandler ValueChanged;
 
         public AdvAnimator(int durationMs)
         {
             _duration = durationMs;
-            _timer = new Timer();
-            _timer.Interval = TickMs;
-            _timer.Tick += OnTick;
         }
 
         /// <summary>전환에 걸리는 시간(ms). 0 이하면 애니메이션 없이 즉시 반영된다.</summary>
@@ -33,6 +29,13 @@ namespace AdvancedControls.Animation
         {
             get { return _duration; }
             set { _duration = value; }
+        }
+
+        /// <summary>가감속 곡선. 전이(AnimateTo) 모드의 <see cref="Eased"/>에만 반영된다.</summary>
+        public AdvEasing Easing
+        {
+            get { return _easing; }
+            set { _easing = value; }
         }
 
         /// <summary>선형 진행도(0~1).</summary>
@@ -44,12 +47,12 @@ namespace AdvancedControls.Animation
         /// <summary>가감속이 적용된 값. 그리기에는 이쪽을 쓴다.</summary>
         public float Eased
         {
-            get { return _value * _value * (3f - 2f * _value); }   // smoothstep
+            get { return AdvEase.Apply(_easing, _value); }
         }
 
         public bool IsAnimating
         {
-            get { return !_disposed && _timer.Enabled; }
+            get { return !_disposed && _running; }
         }
 
         /// <summary>무한 반복(loop) 모드로 도는 중인지.</summary>
@@ -70,14 +73,14 @@ namespace AdvancedControls.Animation
             _duration = periodMs;
             _looping = true;
             _value = 0f;
-            _timer.Start();
+            Start();
         }
 
         /// <summary>반복을 멈춘다.</summary>
         public void StopLoop()
         {
             _looping = false;
-            _timer.Stop();
+            Stop();
         }
 
         /// <summary>목표치로 전환을 시작한다.</summary>
@@ -87,7 +90,7 @@ namespace AdvancedControls.Animation
             _looping = false;      // 전이 모드로 전환
 
             target = Clamp01(target);
-            if (_target == target && !_timer.Enabled) return;
+            if (_target == target && !_running) return;
 
             _target = target;
 
@@ -99,11 +102,11 @@ namespace AdvancedControls.Animation
 
             if (_value == _target)
             {
-                _timer.Stop();
+                Stop();
                 return;
             }
 
-            _timer.Start();
+            Start();
         }
 
         /// <summary>애니메이션 없이 값을 즉시 맞춘다. 비활성화·디자인타임에 쓴다.</summary>
@@ -113,7 +116,7 @@ namespace AdvancedControls.Animation
             _looping = false;
 
             value = Clamp01(value);
-            _timer.Stop();
+            Stop();
             _target = value;
 
             if (_value == value) return;
@@ -122,33 +125,51 @@ namespace AdvancedControls.Animation
             Raise();
         }
 
-        private void OnTick(object sender, EventArgs e)
+        /// <summary>
+        /// 드라이버가 한 틱마다 부른다. 아직 돌아야 하면 true, 끝났으면 false를 준다.
+        /// </summary>
+        /// <param name="dtMs">직전 틱으로부터 실제 경과한 시간(ms).</param>
+        internal bool Advance(int dtMs)
         {
-            if (_disposed) return;
+            if (_disposed) return false;
 
             if (_looping)
             {
-                float lstep = _duration <= 0 ? 1f : (float)TickMs / _duration;
+                float lstep = _duration <= 0 ? 1f : (float)dtMs / _duration;
                 _value += lstep;
                 while (_value >= 1f) _value -= 1f;   // 1에서 0으로 wrap — 멈추지 않는다
                 Raise();
-                return;
+                return true;
             }
 
-            float step = _duration <= 0 ? 1f : (float)TickMs / _duration;
+            float step = _duration <= 0 ? 1f : (float)dtMs / _duration;
 
             if (_value < _target)
             {
                 _value += step;
-                if (_value >= _target) { _value = _target; _timer.Stop(); }
+                if (_value >= _target) { _value = _target; _running = false; Raise(); return false; }
             }
             else
             {
                 _value -= step;
-                if (_value <= _target) { _value = _target; _timer.Stop(); }
+                if (_value <= _target) { _value = _target; _running = false; Raise(); return false; }
             }
 
             Raise();
+            return true;
+        }
+
+        private void Start()
+        {
+            if (_disposed) return;
+            _running = true;
+            AdvAnimationDriver.Add(this);
+        }
+
+        private void Stop()
+        {
+            _running = false;
+            AdvAnimationDriver.Remove(this);
         }
 
         private void Raise()
@@ -169,9 +190,7 @@ namespace AdvancedControls.Animation
             if (_disposed) return;
             _disposed = true;
 
-            _timer.Stop();
-            _timer.Tick -= OnTick;
-            _timer.Dispose();
+            Stop();
             ValueChanged = null;
         }
     }

@@ -25,8 +25,10 @@ namespace AdvancedControls.Controls
         private Color _context = Color.Empty;
         private bool _striped;
         private bool _stripeAnimated = true;
+        private bool _indeterminate;
         private readonly AdvAnimator _fillAnim;
         private readonly AdvAnimator _stripeAnim;
+        private readonly AdvAnimator _indetAnim;
         private AdvProgressBarOptions _options;
         private SolidBrush _stripeBrush;                      // 빗금용 캐시 브러시(알파 고정)
         private readonly Point[] _stripePts = new Point[4];   // 빗금 폴리곤 좌표 재사용 버퍼
@@ -54,6 +56,9 @@ namespace AdvancedControls.Controls
 
             _stripeAnim = new AdvAnimator(0);
             _stripeAnim.ValueChanged += OnStripeTick;
+
+            _indetAnim = new AdvAnimator(0);
+            _indetAnim.ValueChanged += OnStripeTick;   // 같은 재그리기 핸들러를 쓴다
         }
 
         protected override Size DefaultSize
@@ -158,6 +163,15 @@ namespace AdvancedControls.Controls
             set { if (_stripeAnimated == value) return; _stripeAnimated = value; UpdateStripeAnim(); Invalidate(); }
         }
 
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("진행률을 알 수 없을 때 좌우로 흐르는 블록을 표시합니다. 켜면 Value 대신 애니메이션으로 표시합니다.")]
+        public bool Indeterminate
+        {
+            get { return _indeterminate; }
+            set { if (_indeterminate == value) return; _indeterminate = value; UpdateIndetAnim(); Invalidate(); }
+        }
+
         /// <summary>0~1 사이의 진행 비율.</summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -173,6 +187,7 @@ namespace AdvancedControls.Controls
         private void SyncFill(bool animate)
         {
             _fillAnim.Duration = EffectiveTransitionDuration;
+            _fillAnim.Easing = EffectiveEasing;
 
             if (animate) _fillAnim.AnimateTo(Ratio);
             else _fillAnim.SetImmediate(Ratio);
@@ -197,6 +212,36 @@ namespace AdvancedControls.Controls
             bool run = !DesignMode && IsHandleCreated && Visible && _striped && _stripeAnimated;
             if (run && !_stripeAnim.IsLooping) _stripeAnim.StartLoop(1000);
             else if (!run && _stripeAnim.IsLooping) _stripeAnim.StopLoop();
+        }
+
+        private void UpdateIndetAnim()
+        {
+            bool run = !DesignMode && IsHandleCreated && Visible && _indeterminate;
+            if (run && !_indetAnim.IsLooping) _indetAnim.StartLoop(1200);
+            else if (!run && _indetAnim.IsLooping) _indetAnim.StopLoop();
+        }
+
+        /// <summary>진행률을 모를 때 좌우로 흐르는 블록을 둥근 트랙 안에 클립해 그린다.</summary>
+        private void DrawIndeterminate(Graphics g, Rectangle track, AdvCorners corners,
+                                       AdvContextPalette palette, AdvTheme theme)
+        {
+            if (track.Width <= 0 || track.Height <= 0) return;
+
+            float phase = DesignMode ? 0.35f : _indetAnim.Value;   // 0~1
+            int blockW = Math.Max(track.Height, (int)(track.Width * 0.35f));
+            int travel = track.Width + blockW;
+            int x = track.Left - blockW + (int)(phase * travel);
+            var block = new Rectangle(x, track.Y, blockW, track.Height);
+
+            using (var trackPath = AdvGraphics.CreateRoundedRect(track, corners))
+            {
+                var state = g.Save();
+                g.SetClip(trackPath);
+                using (var bpath = AdvGraphics.CreateRoundedRect(block, corners))
+                using (var brush = new SolidBrush(Enabled ? palette.Solid : theme.TextDisabled))
+                    g.FillPath(brush, bpath);
+                g.Restore(state);
+            }
         }
 
         /// <summary>채움 위에 45° 반투명 빗금을 그린다. loop 위상만큼 옆으로 흐른다.</summary>
@@ -226,17 +271,20 @@ namespace AdvancedControls.Controls
             base.OnHandleCreated(e);
             SyncFill(false);
             UpdateStripeAnim();
+            UpdateIndetAnim();
         }
 
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
             UpdateStripeAnim();
+            UpdateIndetAnim();
         }
 
         protected override void OnThemeChanged()
         {
             _fillAnim.Duration = EffectiveTransitionDuration;
+            _fillAnim.Easing = EffectiveEasing;
             base.OnThemeChanged();
         }
 
@@ -262,8 +310,17 @@ namespace AdvancedControls.Controls
                                   Enabled ? theme.SurfacePressed : theme.DisabledFill,
                                   Color.Empty, Color.Transparent, null, CurrentElevation);
 
-            float ratio = _fillAnim.Eased;
             var track = AdvGraphics.Deflate(bounds, bw);
+
+            // 진행률을 모르면 값 채움 대신 흐르는 블록을 그린다(퍼센트도 표시 안 함)
+            if (_indeterminate)
+            {
+                DrawIndeterminate(g, track, corners, palette, theme);
+                base.OnPaint(e);
+                return;
+            }
+
+            float ratio = _fillAnim.Eased;
 
             int fillWidth = 0;
             if (ratio > 0f && track.Width > 0)
@@ -371,6 +428,8 @@ namespace AdvancedControls.Controls
                 _fillAnim.Dispose();
                 _stripeAnim.ValueChanged -= OnStripeTick;
                 _stripeAnim.Dispose();
+                _indetAnim.ValueChanged -= OnStripeTick;
+                _indetAnim.Dispose();
                 if (_stripeBrush != null) { _stripeBrush.Dispose(); _stripeBrush = null; }
             }
             base.Dispose(disposing);
@@ -443,6 +502,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.StripeAnimated; }
             set { _owner.StripeAnimated = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("진행률을 알 수 없을 때 좌우로 흐르는 블록을 표시합니다.")]
+        public bool Indeterminate
+        {
+            get { return _owner.Indeterminate; }
+            set { _owner.Indeterminate = value; }
         }
     }
 }

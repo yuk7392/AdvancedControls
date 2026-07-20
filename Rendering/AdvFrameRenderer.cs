@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using AdvancedControls.Theming;
@@ -10,6 +11,13 @@ namespace AdvancedControls.Rendering
     /// </summary>
     public static class AdvFrameRenderer
     {
+        // 프레임은 매 그리기(호버·포커스 전환 중 최대 66fps)마다 다시 그려진다.
+        // 경로·펜·단색 브러시를 프레임마다 새로 만들지 않고 스레드마다 하나씩 재사용한다.
+        // WinForms 그리기는 UI 스레드 전용이라 [ThreadStatic]이면 충돌이 없다.
+        [ThreadStatic] private static GraphicsPath _path;
+        [ThreadStatic] private static Pen _pen;
+        [ThreadStatic] private static SolidBrush _fill;
+
         /// <param name="bounds">테두리를 그릴 영역. 그림자는 이 영역 바깥으로 퍼진다.</param>
         /// <param name="borderWidth">테두리 두께. 컨트롤마다 테마를 덮어쓸 수 있어 따로 받는다.</param>
         /// <param name="fillEnd">비어 있으면 단색, 값이 있으면 fill에서 이 색으로 그라데이션.</param>
@@ -36,23 +44,34 @@ namespace AdvancedControls.Rendering
 
             var inner = AdvGraphics.Deflate(bounds, borderWidth);
 
-            using (var path = AdvGraphics.CreateRoundedRect(inner, corners))
+            var path = _path ?? (_path = new GraphicsPath());
+            path.Reset();
+            AdvGraphics.BuildRoundedRect(path, inner, corners);
+
+            if (fill.A > 0)
             {
-                if (fill.A > 0)
+                // 단색이면 재사용 브러시로 색만 바꿔 채운다. 그라데이션은 영역에 종속돼 매번 새로 만든다.
+                if (fillEnd.IsEmpty || fillEnd == fill)
+                {
+                    var fb = _fill ?? (_fill = new SolidBrush(Color.Black));
+                    fb.Color = fill;
+                    g.FillPath(fb, path);
+                }
+                else
                 {
                     float angle = float.IsNaN(gradientAngle) ? theme.GradientAngle : gradientAngle;
                     using (var brush = AdvGraphics.CreateFillBrush(inner, fill, fillEnd, angle))
                         g.FillPath(brush, path);
                 }
+            }
 
-                if (border.A > 0 && borderWidth > 0)
-                {
-                    using (var pen = new Pen(border, borderWidth))
-                    {
-                        pen.DashStyle = ToDashStyle(dash);
-                        g.DrawPath(pen, path);
-                    }
-                }
+            if (border.A > 0 && borderWidth > 0)
+            {
+                var pen = _pen ?? (_pen = new Pen(Color.Black));
+                pen.Color = border;
+                pen.Width = borderWidth;
+                pen.DashStyle = ToDashStyle(dash);
+                g.DrawPath(pen, path);
             }
         }
 

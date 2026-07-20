@@ -24,6 +24,11 @@ namespace AdvancedControls.Controls
         private int _increment = 1;
         private Color _context = Color.Empty;
         private bool _dragging;
+        private int _tickFrequency;
+        private bool _showValueTooltip;
+        private ToolStripDropDown _valueTip;
+        private ToolTipBubble _valueBubble;
+        private ToolStripControlHost _valueHost;
         private AdvRangeOptions _options;
 
         [Category("Behavior")]
@@ -116,6 +121,29 @@ namespace AdvancedControls.Controls
         public bool ShouldSerializeContext() { return !_context.IsEmpty; }
         public void ResetContext() { Context = Color.Empty; }
 
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(0)]
+        [Description("눈금 간격입니다. 0이면 눈금을 그리지 않습니다. 예: 10이면 10마다 눈금을 긋습니다.")]
+        public int TickFrequency
+        {
+            get { return _tickFrequency; }
+            set { value = Math.Max(0, value); if (_tickFrequency == value) return; _tickFrequency = value; Invalidate(); }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("드래그하는 동안 손잡이 위에 현재 값을 말풍선으로 표시합니다.")]
+        public bool ShowValueTooltip
+        {
+            get { return _showValueTooltip; }
+            set
+            {
+                if (_showValueTooltip == value) return;
+                _showValueTooltip = value;
+                if (!value) HideValueTip();
+            }
+        }
+
         [Category(AdvCategory.Name)]
         [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -186,6 +214,10 @@ namespace AdvancedControls.Controls
             using (var brush = new SolidBrush(Enabled ? theme.SurfacePressed : theme.DisabledFill))
                 g.FillPath(brush, path);
 
+            // 눈금(트랙 아래).
+            if (_tickFrequency > 0)
+                DrawTicks(g, t, cy, trackH, Enabled ? theme.TextMuted : theme.TextDisabled);
+
             // 채움(최솟값 → 현재값).
             int fillW = Math.Max(0, tx - t.Left);
             if (fillW > 0)
@@ -216,6 +248,85 @@ namespace AdvancedControls.Controls
             base.OnPaint(e);
         }
 
+        /// <summary>눈금을 트랙 아래에 짧은 세로선으로 긋는다.</summary>
+        private void DrawTicks(Graphics g, Rectangle track, int cy, int trackH, Color color)
+        {
+            int span = _maximum - _minimum;
+            if (span <= 0 || _tickFrequency <= 0) return;
+            if (span / _tickFrequency > 500) return;      // 너무 촘촘하면 그리지 않는다
+
+            int y1 = cy + trackH / 2 + 2;
+            int len = Math.Min(5, FrameBounds.Bottom - y1);
+            if (len < 2) return;
+            int y2 = y1 + len;
+
+            using (var pen = new Pen(color, 1f))
+            {
+                for (int v = _minimum; v <= _maximum; v += _tickFrequency)
+                {
+                    float ratio = (float)(v - _minimum) / span;
+                    int x = track.Left + (int)Math.Round(ratio * track.Width);
+                    g.DrawLine(pen, x, y1, x, y2);
+                }
+                // 최댓값이 간격에 딱 안 맞아도 끝 눈금은 긋는다
+                if (span % _tickFrequency != 0)
+                    g.DrawLine(pen, track.Right, y1, track.Right, y2);
+            }
+        }
+
+        #region 드래그 값 말풍선
+
+        private void EnsureValueTip()
+        {
+            if (_valueTip != null) return;
+
+            _valueBubble = new ToolTipBubble();
+            _valueHost = new ToolStripControlHost(_valueBubble)
+            { Margin = Padding.Empty, Padding = Padding.Empty, AutoSize = false };
+            _valueTip = new ToolStripDropDown
+            { AutoSize = false, Margin = Padding.Empty, Padding = Padding.Empty,
+              AutoClose = false, DropShadowEnabled = false };
+            _valueTip.Items.Add(_valueHost);
+        }
+
+        /// <summary>현재 값을 손잡이 위에 띄우거나, 이미 떠 있으면 위치·내용을 갱신한다.</summary>
+        private void ShowOrUpdateValueTip()
+        {
+            if (!_showValueTooltip || DesignMode || !IsHandleCreated) return;
+
+            EnsureValueTip();
+            _valueBubble.SetContent(_value.ToString(), string.Empty, EffectiveTheme);
+
+            var size = _valueBubble.Measure();
+            _valueBubble.Size = size; _valueHost.Size = size; _valueTip.Size = size;
+
+            var old = _valueTip.Region;
+            using (var rp = AdvGraphics.CreateRoundedRect(new Rectangle(0, 0, size.Width, size.Height), 6))
+                _valueTip.Region = new Region(rp);
+            if (old != null) old.Dispose();
+
+            int cy = FrameBounds.Top + FrameBounds.Height / 2;
+            int thumbTop = cy - ThumbDiameter / 2;
+            var screen = PointToScreen(new Point(ThumbX, thumbTop));
+
+            int x = screen.X - size.Width / 2;
+            int y = screen.Y - size.Height - 6;
+            var wa = Screen.FromControl(this).WorkingArea;
+            if (x < wa.Left) x = wa.Left;
+            if (x + size.Width > wa.Right) x = wa.Right - size.Width;
+            if (y < wa.Top) y = screen.Y + ThumbDiameter + 6;   // 위 공간이 없으면 아래로
+
+            if (_valueTip.Visible) _valueTip.Location = new Point(x, y);
+            else _valueTip.Show(x, y);
+        }
+
+        private void HideValueTip()
+        {
+            if (_valueTip != null && _valueTip.Visible) _valueTip.Close();
+        }
+
+        #endregion
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
@@ -225,12 +336,17 @@ namespace AdvancedControls.Controls
             SetValueFromX(e.X);
             _dragging = true;
             Capture = true;
+            ShowOrUpdateValueTip();
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             // 캡처가 비정상으로 풀렸을 때를 대비해 왼쪽 버튼이 실제로 눌린 동안만 드래그로 인정한다.
-            if (_dragging && (e.Button & MouseButtons.Left) != 0) SetValueFromX(e.X);
+            if (_dragging && (e.Button & MouseButtons.Left) != 0)
+            {
+                SetValueFromX(e.X);
+                ShowOrUpdateValueTip();
+            }
             base.OnMouseMove(e);
         }
 
@@ -238,6 +354,7 @@ namespace AdvancedControls.Controls
         {
             // 드래그 중 캡처가 풀리면(MessageBox·Alt+Tab·Enabled=false 등) 드래그 상태를 확실히 내린다.
             _dragging = false;
+            HideValueTip();
             base.OnMouseCaptureChanged(e);
         }
 
@@ -247,6 +364,7 @@ namespace AdvancedControls.Controls
             {
                 _dragging = false;
                 Capture = false;
+                HideValueTip();
             }
             base.OnMouseUp(e);
         }
@@ -301,6 +419,17 @@ namespace AdvancedControls.Controls
             Invalidate();
             base.OnThemeChanged();
         }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _valueTip != null)
+            {
+                if (_valueTip.Region != null) _valueTip.Region.Dispose();
+                _valueTip.Dispose();
+                _valueTip = null;
+            }
+            base.Dispose(disposing);
+        }
     }
 
     /// <summary>AdvRange가 추가한 속성.</summary>
@@ -354,5 +483,21 @@ namespace AdvancedControls.Controls
         }
         public bool ShouldSerializeContext() { return _owner.ShouldSerializeContext(); }
         public void ResetContext() { _owner.ResetContext(); }
+
+        [DefaultValue(0)]
+        [Description("눈금 간격입니다. 0이면 눈금을 그리지 않습니다. 예: 10이면 10마다 눈금을 긋습니다.")]
+        public int TickFrequency
+        {
+            get { return _owner.TickFrequency; }
+            set { _owner.TickFrequency = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("드래그하는 동안 손잡이 위에 현재 값을 말풍선으로 표시합니다.")]
+        public bool ShowValueTooltip
+        {
+            get { return _owner.ShowValueTooltip; }
+            set { _owner.ShowValueTooltip = value; }
+        }
     }
 }

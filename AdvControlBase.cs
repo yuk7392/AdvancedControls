@@ -498,8 +498,17 @@ namespace AdvancedControls
         private void SyncAnimationDuration()
         {
             int d = EffectiveTransitionDuration;
+            var ease = _appearance.Easing;
             _hoverAnim.Duration = d;
             _focusAnim.Duration = d;
+            _hoverAnim.Easing = ease;
+            _focusAnim.Easing = ease;
+        }
+
+        /// <summary>파생 클래스가 자체 애니메이터의 가감속을 맞출 때 쓴다.</summary>
+        protected AdvEasing EffectiveEasing
+        {
+            get { return _appearance.Easing; }
         }
 
         private void OnAnimationTick(object sender, EventArgs e)

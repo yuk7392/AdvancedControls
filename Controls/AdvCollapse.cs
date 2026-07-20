@@ -56,6 +56,7 @@ namespace AdvancedControls.Controls
                     _expandedHeight = Height > 0 ? Height : DefaultSize.Height;
 
                 _anim.Duration = DesignMode ? 0 : EffectiveTheme.TransitionDuration;
+                _anim.Easing = EffectiveEasing;
                 _anim.AnimateTo(value ? 0f : 1f);
 
                 var h = CollapsedChanged;

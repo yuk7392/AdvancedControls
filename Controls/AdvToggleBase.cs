@@ -177,6 +177,7 @@ namespace AdvancedControls.Controls
         {
             _checked = value;
             _checkAnim.Duration = EffectiveTransitionDuration;
+            _checkAnim.Easing = EffectiveEasing;
             _checkAnim.AnimateTo(value ? 1f : 0f);
             Invalidate();
         }
@@ -416,6 +417,7 @@ namespace AdvancedControls.Controls
         protected override void OnThemeChanged()
         {
             _checkAnim.Duration = EffectiveTransitionDuration;
+            _checkAnim.Easing = EffectiveEasing;
             base.OnThemeChanged();
         }
 
@@ -423,6 +425,7 @@ namespace AdvancedControls.Controls
         {
             base.OnHandleCreated(e);
             _checkAnim.Duration = EffectiveTransitionDuration;
+            _checkAnim.Easing = EffectiveEasing;
             _checkAnim.SetImmediate(_checked ? 1f : 0f);
         }
 

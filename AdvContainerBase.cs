@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
+using AdvancedControls.Animation;
+using AdvancedControls.Rendering;
 using AdvancedControls.Theming;
 
 namespace AdvancedControls
@@ -168,6 +170,12 @@ namespace AdvancedControls
             Invalidate();
         }
 
+        /// <summary>자체 애니메이터의 가감속을 맞출 때 쓴다.</summary>
+        protected AdvEasing EffectiveEasing
+        {
+            get { return _appearance.Easing; }
+        }
+
         protected AdvTheme EffectiveTheme
         {
             get
@@ -254,7 +262,37 @@ namespace AdvancedControls
         private void OnAppearanceLayoutChanged(object sender, EventArgs e)
         {
             OnThemeChanged();
+            ApplyRoundedRegion();
             PerformLayout();
+        }
+
+        /// <summary>
+        /// 사각 자식(Dock=Fill 등)의 모서리가 둥근 테두리 밖으로 튀어나오지 않도록
+        /// 컨테이너 전체를 둥근 모양으로 잘라 낸다. 테두리·그림자는 OnPaint가 그리므로
+        /// 잘리지 않게 프레임보다 1px 넉넉히 잡고, Elevated면 그림자가 잘리지 않도록 자르지 않는다.
+        /// </summary>
+        private void ApplyRoundedRegion()
+        {
+            if (!IsHandleCreated) return;
+
+            var old = Region;
+            if (_appearance.Elevated)
+            {
+                Region = null;
+            }
+            else
+            {
+                var clip = Rectangle.Inflate(FrameBounds, 1, 1);
+                using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
+                    Region = new Region(path);
+            }
+            if (old != null) old.Dispose();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            ApplyRoundedRegion();
         }
 
         /// <summary>
@@ -265,12 +303,14 @@ namespace AdvancedControls
         protected virtual void OnThemeChanged()
         {
             BackColor = EffectiveTheme.Surface;
+            ApplyRoundedRegion();      // 테마가 바뀌면 모서리 반경도 달라질 수 있다
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             BackColor = EffectiveTheme.Surface;
             base.OnHandleCreated(e);
+            ApplyRoundedRegion();
         }
 
         private void OnGlobalThemeChanged(object sender, EventArgs e)
@@ -319,6 +359,7 @@ namespace AdvancedControls
                 _appearance.LayoutChanged -= OnAppearanceLayoutChanged;
 
                 if (_colors != null) _colors.Changed -= OnColorsChanged;
+                if (Region != null) Region.Dispose();
             }
             base.Dispose(disposing);
         }

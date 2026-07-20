@@ -20,6 +20,19 @@ namespace AdvancedControls.Controls
         Wave
     }
 
+    /// <summary>스켈레톤 모양 템플릿. 실제 콘텐츠의 윤곽을 흉내 낸다.</summary>
+    public enum AdvPlaceholderTemplate
+    {
+        /// <summary>단일 블록.</summary>
+        Block,
+        /// <summary>여러 줄의 글자 막대(마지막 줄은 짧게).</summary>
+        Text,
+        /// <summary>원형 아바타 + 옆 두 줄(미디어 오브젝트).</summary>
+        Avatar,
+        /// <summary>이미지 블록 + 아래 제목·본문 줄(카드).</summary>
+        Card
+    }
+
     /// <summary>
     /// 콘텐츠 로딩 중 자리를 채우는 스켈레톤 블록.
     /// glow/wave 애니메이션은 <see cref="AdvAnimator"/>의 loop 모드로 돈다.
@@ -30,8 +43,10 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvAnimator _anim;
         private AdvPlaceholderAnimation _animation = AdvPlaceholderAnimation.Glow;
+        private AdvPlaceholderTemplate _template = AdvPlaceholderTemplate.Block;
         private AdvPlaceholderOptions _options;
         private ColorBlend _waveBlend;   // 색은 테마에서만 오므로 프레임마다 재생성하지 않고 캐싱한다
+        private SolidBrush _fillBrush;   // glow/wave는 66fps로 도므로 채움 브러시도 캐싱(색만 갱신)
 
         public AdvPlaceholder()
         {
@@ -53,6 +68,15 @@ namespace AdvancedControls.Controls
         {
             get { return _animation; }
             set { if (_animation == value) return; _animation = value; UpdateAnim(); Invalidate(); }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(AdvPlaceholderTemplate.Block)]
+        [Description("스켈레톤 모양입니다. Text·Avatar·Card는 실제 콘텐츠 윤곽을 흉내 냅니다.")]
+        public AdvPlaceholderTemplate Template
+        {
+            get { return _template; }
+            set { if (_template == value) return; _template = value; Invalidate(); }
         }
 
         [Category(AdvCategory.Name)]
@@ -107,16 +131,103 @@ namespace AdvancedControls.Controls
                 baseGray = AdvContextPalette.Lerp(baseGray, light, tri);
             }
 
-            using (var path = AdvGraphics.CreateRoundedRect(bounds, EffectiveCorners))
+            using (var path = BuildShapePath(bounds))
             {
-                using (var brush = new SolidBrush(baseGray))
-                    g.FillPath(brush, path);
+                if (_fillBrush == null) _fillBrush = new SolidBrush(baseGray);
+                else _fillBrush.Color = baseGray;
+                g.FillPath(_fillBrush, path);
 
                 if (_animation == AdvPlaceholderAnimation.Wave)
-                    DrawWave(g, path, bounds, theme, phase);
+                    DrawWave(g, path, bounds, theme, phase);   // 시머가 모든 도형에 걸쳐 흐른다
             }
 
             base.OnPaint(e);
+        }
+
+        /// <summary>선택한 템플릿의 모든 도형을 하나의 경로로 모은다. 채움·시머 클립에 함께 쓴다.</summary>
+        private GraphicsPath BuildShapePath(Rectangle b)
+        {
+            var path = new GraphicsPath();
+            switch (_template)
+            {
+                case AdvPlaceholderTemplate.Text: AddTextLines(path, b, 3); break;
+                case AdvPlaceholderTemplate.Avatar: AddAvatar(path, b); break;
+                case AdvPlaceholderTemplate.Card: AddCard(path, b); break;
+                default: AddBlock(path, b); break;   // Block: 전체(기존과 동일)
+            }
+            return path;
+        }
+
+        /// <summary>한 줄 막대의 높이. 글꼴에 맞춘다.</summary>
+        private int BarHeight
+        {
+            get { return Math.Max(8, Font.Height); }
+        }
+
+        private void AddBlock(GraphicsPath path, Rectangle r)
+        {
+            if (r.Width <= 0 || r.Height <= 0) return;
+            using (var rp = AdvGraphics.CreateRoundedRect(r, EffectiveCorners))
+                path.AddPath(rp, false);
+        }
+
+        private static void AddBar(GraphicsPath path, Rectangle r, int radius)
+        {
+            if (r.Width <= 0 || r.Height <= 0) return;
+            using (var rp = AdvGraphics.CreateRoundedRect(r, radius))
+                path.AddPath(rp, false);
+        }
+
+        private void AddTextLines(GraphicsPath path, Rectangle b, int lines)
+        {
+            int bar = BarHeight;
+            int gap = Math.Max(4, (int)(bar * 0.6f));
+
+            // 높이에 실제로 들어가는 줄 수로 보정한 뒤 세로 중앙에 모은다
+            int fit = Math.Max(1, (b.Height + gap) / (bar + gap));
+            int n = Math.Min(lines, fit);
+            int totalH = n * bar + (n - 1) * gap;
+            int y = b.Top + Math.Max(0, (b.Height - totalH) / 2);
+
+            float[] widths = { 1f, 0.95f, 0.6f };
+            for (int i = 0; i < n; i++)
+            {
+                int w = (int)(b.Width * widths[Math.Min(i, widths.Length - 1)]);
+                AddBar(path, new Rectangle(b.Left, y, w, bar), bar / 2);
+                y += bar + gap;
+            }
+        }
+
+        private void AddAvatar(GraphicsPath path, Rectangle b)
+        {
+            int d = Math.Max(8, Math.Min(b.Height, (int)(b.Width * 0.35f)));
+            path.AddEllipse(new Rectangle(b.Left, b.Top + (b.Height - d) / 2, d, d));
+
+            int bar = BarHeight;
+            int tx = b.Left + d + Math.Max(8, bar / 2);
+            int tw = b.Right - tx;
+            if (tw <= 0) return;
+
+            int gap = Math.Max(4, (int)(bar * 0.7f));
+            int totalH = bar * 2 + gap;
+            int y = b.Top + Math.Max(0, (b.Height - totalH) / 2);
+            AddBar(path, new Rectangle(tx, y, (int)(tw * 0.7f), bar), bar / 2);
+            AddBar(path, new Rectangle(tx, y + bar + gap, (int)(tw * 0.45f), bar), bar / 2);
+        }
+
+        private void AddCard(GraphicsPath path, Rectangle b)
+        {
+            int bar = BarHeight;
+            int gap = Math.Max(4, (int)(bar * 0.6f));
+            int imageH = Math.Max(bar, (int)(b.Height * 0.55f));
+            AddBlock(path, new Rectangle(b.Left, b.Top, b.Width, imageH));
+
+            int y = b.Top + imageH + gap;
+            if (y + bar <= b.Bottom)
+                AddBar(path, new Rectangle(b.Left, y, (int)(b.Width * 0.8f), bar), bar / 2);
+            y += bar + gap;
+            if (y + bar <= b.Bottom)
+                AddBar(path, new Rectangle(b.Left, y, (int)(b.Width * 0.55f), bar), bar / 2);
         }
 
         private void DrawWave(Graphics g, GraphicsPath clip, Rectangle bounds, AdvTheme theme, float phase)
@@ -157,6 +268,7 @@ namespace AdvancedControls.Controls
             {
                 _anim.ValueChanged -= OnAnimTick;
                 _anim.Dispose();
+                if (_fillBrush != null) { _fillBrush.Dispose(); _fillBrush = null; }
             }
             base.Dispose(disposing);
         }
@@ -171,6 +283,14 @@ namespace AdvancedControls.Controls
         internal AdvPlaceholderOptions(AdvPlaceholder owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
+        }
+
+        [DefaultValue(AdvPlaceholderTemplate.Block)]
+        [Description("스켈레톤 모양입니다. Text·Avatar·Card는 실제 콘텐츠 윤곽을 흉내 냅니다.")]
+        public AdvPlaceholderTemplate Template
+        {
+            get { return _owner.Template; }
+            set { _owner.Template = value; }
         }
 
         [DefaultValue(AdvPlaceholderAnimation.Glow)]

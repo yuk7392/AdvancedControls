@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using AdvancedControls.Animation;
 using AdvancedControls.Rendering;
 using AdvancedControls.Theming;
 
@@ -19,12 +20,25 @@ namespace AdvancedControls.Controls
         Ghost
     }
 
+    /// <summary>버튼 크기 단계. 글자 크기와 높이를 함께 키우거나 줄인다.</summary>
+    public enum AdvButtonSize
+    {
+        /// <summary>작게(글꼴 0.85배).</summary>
+        Small,
+        /// <summary>보통(기본 글꼴).</summary>
+        Medium,
+        /// <summary>크게(글꼴 1.2배).</summary>
+        Large
+    }
+
     [ToolboxItem(true)]
     [DefaultEvent("Click")]
     [Description("테마를 따르는 커스텀 그리기 버튼입니다.")]
     public class AdvButton : AdvControlBase, IButtonControl
     {
         private const int ImageTextGap = 6;
+
+        private const int SplitWidth = 22;
 
         private AdvButtonKind _kind = AdvButtonKind.Filled;
         private Color _context = Color.Empty;
@@ -34,9 +48,70 @@ namespace AdvancedControls.Controls
         private TextImageRelation _textImageRelation = TextImageRelation.ImageBeforeText;
         private AdvButtonOptions _options;
 
+        // 버튼/상태: 로딩 스피너·크기 단계·분할 드롭다운
+        private readonly AdvAnimator _loadingAnim;
+        private bool _isLoading;
+        private AdvButtonSize _size = AdvButtonSize.Medium;
+        private Font _sizeFont;                 // Medium이 아닐 때만 만든다(파생 글꼴)
+        private bool _splitDropDown;
+        private ContextMenuStrip _splitMenu;
+        private Rectangle _splitRect = Rectangle.Empty;
+        private bool _swallowClick;             // 분할 영역 클릭이면 본문 Click을 삼킨다
+
+        /// <summary>분할 버튼의 드롭다운(오른쪽 화살표) 영역을 눌렀을 때 발생한다.</summary>
+        [Category("Action")]
+        [Description("분할 버튼의 드롭다운 영역을 눌렀을 때 발생합니다.")]
+        public event EventHandler DropDownClick;
+
         public AdvButton()
         {
             TabStop = true;
+            _loadingAnim = new AdvAnimator(0);
+            _loadingAnim.ValueChanged += OnLoadingTick;
+        }
+
+        /// <summary>크기 단계가 적용된 글꼴. 측정·그리기는 모두 이 글꼴을 쓴다.</summary>
+        private Font EffectiveFont
+        {
+            get { return _size == AdvButtonSize.Medium ? Font : (_sizeFont ?? Font); }
+        }
+
+        private void RebuildSizeFont()
+        {
+            if (_sizeFont != null) { _sizeFont.Dispose(); _sizeFont = null; }
+            if (_size == AdvButtonSize.Medium) return;
+
+            float scale = _size == AdvButtonSize.Small ? 0.85f : 1.20f;
+            _sizeFont = new Font(Font.FontFamily, Font.Size * scale, Font.Style);
+        }
+
+        /// <summary>
+        /// 크기 단계가 더하는 여백. 글꼴 배율만으로는 높이 차이가 작아 사다리가 흐릿하므로,
+        /// 사용자 Padding은 건드리지 않고 내용 영역에만 더해 준다.
+        /// </summary>
+        private Padding SizeInset
+        {
+            get
+            {
+                switch (_size)
+                {
+                    case AdvButtonSize.Small: return new Padding(2, 0, 2, 0);
+                    case AdvButtonSize.Large: return new Padding(8, 5, 8, 5);
+                    default: return Padding.Empty;
+                }
+            }
+        }
+
+        private void OnLoadingTick(object sender, EventArgs e)
+        {
+            if (!IsDisposed && IsHandleCreated) Invalidate();
+        }
+
+        private void UpdateLoadingSpin()
+        {
+            bool run = _isLoading && !DesignMode && IsHandleCreated && Visible;
+            if (run && !_loadingAnim.IsLooping) _loadingAnim.StartLoop(700);
+            else if (!run && _loadingAnim.IsLooping) _loadingAnim.StopLoop();
         }
 
         protected override Size DefaultSize
@@ -90,6 +165,9 @@ namespace AdvancedControls.Controls
         /// </summary>
         protected override void OnClick(EventArgs e)
         {
+            if (_isLoading) return;                                   // 로딩 중엔 클릭 무시
+            if (_swallowClick) { _swallowClick = false; return; }      // 분할 영역 클릭은 본문 Click을 삼킨다
+
             if (_dialogResult != DialogResult.None)
             {
                 var form = FindForm();
@@ -159,6 +237,64 @@ namespace AdvancedControls.Controls
             }
         }
 
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("로딩 중임을 표시합니다. 스피너가 돌고 클릭이 막힙니다.")]
+        public bool IsLoading
+        {
+            get { return _isLoading; }
+            set
+            {
+                if (_isLoading == value) return;
+                _isLoading = value;
+                UpdateLoadingSpin();
+                Cursor = _isLoading ? Cursors.Default : (UseHandCursor ? Cursors.Hand : Cursors.Default);
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(AdvButtonSize.Medium)]
+        [Description("버튼 크기 단계입니다. 글자 크기와 높이를 함께 조정합니다.")]
+        public AdvButtonSize ButtonSize
+        {
+            get { return _size; }
+            set
+            {
+                if (_size == value) return;
+                _size = value;
+                RebuildSizeFont();
+                AdjustSize();
+                ReapplyMinimumSize();
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("오른쪽에 드롭다운(화살표) 영역을 둘지 여부입니다. 그 영역을 누르면 DropDownClick이 발생합니다.")]
+        public bool SplitDropDown
+        {
+            get { return _splitDropDown; }
+            set
+            {
+                if (_splitDropDown == value) return;
+                _splitDropDown = value;
+                AdjustSize();
+                ReapplyMinimumSize();
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(null)]
+        [Description("분할 드롭다운 영역을 눌렀을 때 펼칠 메뉴입니다. 비워 두면 DropDownClick만 발생합니다.")]
+        public ContextMenuStrip SplitMenu
+        {
+            get { return _splitMenu; }
+            set { _splitMenu = value; }
+        }
+
         /// <summary>
         /// 내용(이미지+글자)에 여백·테두리·글로우를 더한 크기.
         /// </summary>
@@ -181,25 +317,27 @@ namespace AdvancedControls.Controls
             var content = MeasureContent();
             var chrome = ChromeSize;
 
+            var inset = SizeInset;
             return new Size(
-                content.Width + chrome.Width,
-                content.Height + chrome.Height);
+                content.Width + chrome.Width + inset.Horizontal + (_splitDropDown ? SplitWidth : 0),
+                content.Height + chrome.Height + inset.Vertical);
         }
 
         /// <summary>
         /// 글자가 통째로 사라지지 않을 만큼의 높이는 지킨다.
-        /// 폭은 줄임표가 처리하므로 제한하지 않는다.
+        /// 폭은 줄임표가 처리하므로 제한하지 않는다(분할 화살표 자리만 확보).
         /// </summary>
         protected override Size MinimumContentSize
         {
-            get { return new Size(0, ChromeSize.Height + Font.Height); }
+            get { return new Size(_splitDropDown ? SplitWidth * 2 : 0,
+                                  ChromeSize.Height + EffectiveFont.Height + SizeInset.Vertical); }
         }
 
         private Size MeasureContent()
         {
             var text = string.IsNullOrEmpty(Text)
                      ? Size.Empty
-                     : TextRenderer.MeasureText(Text, Font, new Size(int.MaxValue, int.MaxValue),
+                     : TextRenderer.MeasureText(Text, EffectiveFont, new Size(int.MaxValue, int.MaxValue),
                                                 TextFormatFlags.NoPrefix);
 
             var img = _image == null ? Size.Empty : _image.Size;
@@ -241,7 +379,7 @@ namespace AdvancedControls.Controls
                 return;
             }
 
-            var text = TextRenderer.MeasureText(Text, Font, new Size(int.MaxValue, int.MaxValue),
+            var text = TextRenderer.MeasureText(Text, EffectiveFont, new Size(int.MaxValue, int.MaxValue),
                                                 TextFormatFlags.NoPrefix);
 
             switch (_textImageRelation)
@@ -331,11 +469,36 @@ namespace AdvancedControls.Controls
                 }
             }
 
+            // 분할 드롭다운: 오른쪽 화살표 영역을 떼어 내고 구분선과 셰브런을 그린다
+            int rightInset = 0;
+            if (_splitDropDown)
+            {
+                _splitRect = new Rectangle(bounds.Right - bw - SplitWidth, bounds.Top + bw,
+                                           SplitWidth, Math.Max(0, bounds.Height - bw * 2));
+                using (var pen = new Pen(Color.FromArgb(90, foreColor)))
+                    g.DrawLine(pen, _splitRect.Left, _splitRect.Top + 4, _splitRect.Left, _splitRect.Bottom - 4);
+                AdvGraphics.DrawChevron(g, _splitRect, AdvGraphics.ChevronDirection.Down, foreColor, 8, 4, 1.5f, 0);
+                rightInset = SplitWidth;
+            }
+            else
+            {
+                _splitRect = Rectangle.Empty;
+            }
+
+            var inset = SizeInset;
             var content = new Rectangle(
-                bounds.Left + bw + Padding.Left,
-                bounds.Top + bw + Padding.Top,
-                Math.Max(0, bounds.Width - bw * 2 - Padding.Horizontal),
-                Math.Max(0, bounds.Height - bw * 2 - Padding.Vertical));
+                bounds.Left + bw + Padding.Left + inset.Left,
+                bounds.Top + bw + Padding.Top + inset.Top,
+                Math.Max(0, bounds.Width - bw * 2 - Padding.Horizontal - inset.Horizontal - rightInset),
+                Math.Max(0, bounds.Height - bw * 2 - Padding.Vertical - inset.Vertical));
+
+            // 로딩 중이면 스피너로 대체한다
+            if (_isLoading)
+            {
+                DrawLoading(g, content, foreColor);
+                base.OnPaint(e);
+                return;
+            }
 
             Rectangle imageRect, textRect;
             LayoutContent(content, out imageRect, out textRect);
@@ -358,11 +521,46 @@ namespace AdvancedControls.Controls
                                    || _textImageRelation == TextImageRelation.TextAboveImage)
                     flags |= TextFormatFlags.HorizontalCenter;
 
-                TextRenderer.DrawText(g, Text, Font, textRect, foreColor, flags);
+                TextRenderer.DrawText(g, Text, EffectiveFont, textRect, foreColor, flags);
             }
 
             // 소비자가 붙인 Paint 핸들러가 위에 덧그릴 수 있도록 마지막에 호출한다
             base.OnPaint(e);
+        }
+
+        /// <summary>로딩 스피너(회전 원호)와, 글자가 있으면 그 오른쪽에 글자를 함께 그린다.</summary>
+        private void DrawLoading(Graphics g, Rectangle content, Color color)
+        {
+            if (content.Width <= 0 || content.Height <= 0) return;
+
+            int sz = Math.Max(6, Math.Min(content.Height, EffectiveFont.Height));
+            bool hasText = !string.IsNullOrEmpty(Text);
+
+            var text = hasText
+                ? TextRenderer.MeasureText(Text, EffectiveFont, new Size(int.MaxValue, int.MaxValue),
+                                           TextFormatFlags.NoPrefix)
+                : Size.Empty;
+
+            int total = hasText ? sz + ImageTextGap + text.Width : sz;
+            int left = content.Left + Math.Max(0, (content.Width - total) / 2);
+
+            var box = new Rectangle(left, content.Top + (content.Height - sz) / 2, sz, sz);
+            int th = Math.Max(2, sz / 7);
+            var arc = Rectangle.Inflate(box, -th, -th);
+
+            float phase = DesignMode ? 0f : _loadingAnim.Value;
+            if (arc.Width > 0 && arc.Height > 0)
+                using (var pen = new Pen(color, th) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                    g.DrawArc(pen, arc.X, arc.Y, arc.Width, arc.Height, phase * 360f, 270f);
+
+            if (hasText)
+            {
+                var tr = new Rectangle(left + sz + ImageTextGap, content.Top,
+                                       content.Right - (left + sz + ImageTextGap), content.Height);
+                TextRenderer.DrawText(g, Text, EffectiveFont, tr, color,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left
+                    | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            }
         }
 
         private void ResolveColors(AdvTheme theme, out Color fill, out Color fillEnd,
@@ -431,13 +629,35 @@ namespace AdvancedControls.Controls
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            if (_isLoading) return;   // 로딩 중엔 눌림·클릭 없음
+
+            // 분할 드롭다운 영역을 누르면 본문 대신 드롭다운을 연다
+            if (_splitDropDown && e.Button == MouseButtons.Left && _splitRect.Contains(e.Location))
+            {
+                _swallowClick = true;
+                if (!Focused) Focus();
+                OnDropDownClick();
+                return;
+            }
+
+            _swallowClick = false;
             if (e.Button == MouseButtons.Left && !Focused) Focus();
             base.OnMouseDown(e);
         }
 
+        /// <summary>분할 드롭다운을 연다. DropDownClick을 올리고, 메뉴가 지정돼 있으면 버튼 아래에 펼친다.</summary>
+        protected virtual void OnDropDownClick()
+        {
+            var h = DropDownClick;
+            if (h != null) h(this, EventArgs.Empty);
+
+            if (_splitMenu != null && !_splitMenu.IsDisposed)
+                _splitMenu.Show(this, new Point(0, Height));
+        }
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Space) IsPressed = true;
+            if (e.KeyCode == Keys.Space && !_isLoading) IsPressed = true;
             base.OnKeyDown(e);
         }
 
@@ -458,6 +678,35 @@ namespace AdvancedControls.Controls
         {
             IsPressed = false;
             base.OnLostFocus(e);
+        }
+
+        protected override void OnFontChanged(EventArgs e)
+        {
+            RebuildSizeFont();      // 크기 단계 글꼴을 새 기준 글꼴에서 다시 만든다
+            base.OnFontChanged(e);
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            UpdateLoadingSpin();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            UpdateLoadingSpin();    // 숨겨지면 스피너 루프를 멈춘다
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _loadingAnim.ValueChanged -= OnLoadingTick;
+                _loadingAnim.Dispose();
+                if (_sizeFont != null) { _sizeFont.Dispose(); _sizeFont = null; }
+            }
+            base.Dispose(disposing);
         }
     }
 
@@ -519,6 +768,38 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.DialogResult; }
             set { _owner.DialogResult = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("로딩 중임을 표시합니다. 스피너가 돌고 클릭이 막힙니다.")]
+        public bool IsLoading
+        {
+            get { return _owner.IsLoading; }
+            set { _owner.IsLoading = value; }
+        }
+
+        [DefaultValue(AdvButtonSize.Medium)]
+        [Description("버튼 크기 단계입니다. 글자 크기와 높이를 함께 조정합니다.")]
+        public AdvButtonSize ButtonSize
+        {
+            get { return _owner.ButtonSize; }
+            set { _owner.ButtonSize = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("오른쪽에 드롭다운(화살표) 영역을 둘지 여부입니다. 그 영역을 누르면 DropDownClick이 발생합니다.")]
+        public bool SplitDropDown
+        {
+            get { return _owner.SplitDropDown; }
+            set { _owner.SplitDropDown = value; }
+        }
+
+        [DefaultValue(null)]
+        [Description("분할 드롭다운 영역을 눌렀을 때 펼칠 메뉴입니다. 비워 두면 DropDownClick만 발생합니다.")]
+        public ContextMenuStrip SplitMenu
+        {
+            get { return _owner.SplitMenu; }
+            set { _owner.SplitMenu = value; }
         }
     }
 }
