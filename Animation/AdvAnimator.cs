@@ -16,6 +16,7 @@ namespace AdvancedControls.Animation
         private float _target;
         private int _duration;
         private bool _disposed;
+        private bool _looping;
 
         public event EventHandler ValueChanged;
 
@@ -51,10 +52,39 @@ namespace AdvancedControls.Animation
             get { return !_disposed && _timer.Enabled; }
         }
 
+        /// <summary>무한 반복(loop) 모드로 도는 중인지.</summary>
+        public bool IsLooping
+        {
+            get { return _looping; }
+        }
+
+        /// <summary>
+        /// 무한 반복을 시작한다. <see cref="Value"/>가 0→1을 선형으로 계속 돌며 1에서 0으로 wrap한다.
+        /// 회전 스피너·시머 등 끝나지 않는 애니메이션에 쓴다. 위상은 <see cref="Value"/>로 읽고
+        /// 각도·오프셋에 매핑한다(Eased는 반복에 맞지 않으므로 쓰지 않는다).
+        /// </summary>
+        /// <param name="periodMs">한 바퀴(0→1)에 걸리는 시간(ms).</param>
+        public void StartLoop(int periodMs)
+        {
+            if (_disposed) return;
+            _duration = periodMs;
+            _looping = true;
+            _value = 0f;
+            _timer.Start();
+        }
+
+        /// <summary>반복을 멈춘다.</summary>
+        public void StopLoop()
+        {
+            _looping = false;
+            _timer.Stop();
+        }
+
         /// <summary>목표치로 전환을 시작한다.</summary>
         public void AnimateTo(float target)
         {
             if (_disposed) return;
+            _looping = false;      // 전이 모드로 전환
 
             target = Clamp01(target);
             if (_target == target && !_timer.Enabled) return;
@@ -80,6 +110,7 @@ namespace AdvancedControls.Animation
         public void SetImmediate(float value)
         {
             if (_disposed) return;
+            _looping = false;
 
             value = Clamp01(value);
             _timer.Stop();
@@ -94,6 +125,15 @@ namespace AdvancedControls.Animation
         private void OnTick(object sender, EventArgs e)
         {
             if (_disposed) return;
+
+            if (_looping)
+            {
+                float lstep = _duration <= 0 ? 1f : (float)TickMs / _duration;
+                _value += lstep;
+                while (_value >= 1f) _value -= 1f;   // 1에서 0으로 wrap — 멈추지 않는다
+                Raise();
+                return;
+            }
 
             float step = _duration <= 0 ? 1f : (float)TickMs / _duration;
 

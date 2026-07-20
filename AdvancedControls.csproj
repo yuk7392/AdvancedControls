@@ -79,6 +79,8 @@
     <Compile Include="Rendering\AdvFrameRenderer.cs" />
     <Compile Include="Rendering\AdvGraphics.cs" />
     <Compile Include="Theming\AdvColorOverrides.cs" />
+    <Compile Include="Theming\AdvContextColor.cs" />
+    <Compile Include="Theming\AdvContextPalette.cs" />
     <Compile Include="Theming\AdvCorners.cs" />
     <Compile Include="Theming\AdvShadow.cs" />
     <Compile Include="Theming\AdvTheme.cs" />
@@ -132,6 +134,18 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Controls\AdvDropDownMenu.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvBadge.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvAlert.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvSpinner.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvPlaceholder.cs">
       <SubType>Component</SubType>
     </Compile>
   </ItemGroup>
