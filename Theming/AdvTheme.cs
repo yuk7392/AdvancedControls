@@ -41,6 +41,12 @@ namespace AdvancedControls.Theming
         public Color AccentGradientEnd { get; set; }
 
         public Color DisabledFill { get; set; }
+
+        /// <summary>
+        /// 포커스 표시용 단색 링 색. 컴팩트·원형·다중 항목 컨트롤(닫기 버튼, 슬라이더, 페이지네이션,
+        /// 리스트 그룹, 브레드크럼, 아코디언 머리글)이 항목/요소에 딱 맞는 링을 그릴 때 쓴다.
+        /// 테두리를 가진 단일 폼 컨트롤(버튼·입력류)은 대신 <see cref="FocusGlow"/> 글로우를 쓴다 — 의도된 이원 체계.
+        /// </summary>
         public Color FocusRing { get; set; }
 
         // 컨텍스트 색 — Bootstrap의 상황별 색(success/danger/warning/info/secondary).

@@ -47,7 +47,7 @@ namespace AdvancedControls.Controls
             get { return new Size(32, 32); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvContextColor.Primary)]
         [Description("스피너의 컨텍스트 색입니다.")]
         public AdvContextColor Context
@@ -56,7 +56,7 @@ namespace AdvancedControls.Controls
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvSpinnerStyle.Border)]
         [Description("스피너 종류입니다.")]
         public AdvSpinnerStyle Style

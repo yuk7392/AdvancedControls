@@ -36,6 +36,7 @@ namespace AdvancedControls.Controls
 
         private string[] _items = new string[0];
         private string[] _badges = new string[0];
+        private Size[] _badgeSizes = new Size[0];   // 배지 텍스트 측정 결과 캐시(_badges와 같은 길이)
         private bool _flush;
         private bool _selectionEnabled = true;
         private int _selectedIndex = -1;
@@ -87,7 +88,7 @@ namespace AdvancedControls.Controls
         public string[] Badges
         {
             get { return (string[])_badges.Clone(); }
-            set { _badges = value ?? new string[0]; Invalidate(); }
+            set { _badges = value ?? new string[0]; MeasureBadges(); Invalidate(); }
         }
 
         [Category("Appearance")]
@@ -99,7 +100,7 @@ namespace AdvancedControls.Controls
             set { if (_flush == value) return; _flush = value; Invalidate(); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvContextColor.Default)]
         [Description("선택된 항목의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
         public AdvContextColor Context
@@ -199,7 +200,7 @@ namespace AdvancedControls.Controls
                 int textRight = row.Right - RowPadH;
                 string badge = i < _badges.Length ? _badges[i] : null;
                 if (!string.IsNullOrEmpty(badge))
-                    textRight = DrawBadge(g, palette, row, badge, selected) - 6;
+                    textRight = DrawBadge(g, palette, row, badge, _badgeSizes[i], selected) - 6;
 
                 var textRect = new Rectangle(row.Left + RowPadH, row.Top,
                                              Math.Max(0, textRight - (row.Left + RowPadH)), row.Height);
@@ -225,10 +226,19 @@ namespace AdvancedControls.Controls
             base.OnPaint(e);
         }
 
-        /// <summary>배지 알약을 그리고 그 왼쪽 x를 돌려준다.</summary>
-        private int DrawBadge(Graphics g, AdvContextPalette palette, Rectangle row, string text, bool onSelectedRow)
+        /// <summary>배지 텍스트 크기를 미리 재서 캐싱한다. Badges/Font가 바뀔 때만 호출한다.</summary>
+        private void MeasureBadges()
         {
-            var size = TextRenderer.MeasureText(text, Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPrefix);
+            _badgeSizes = new Size[_badges.Length];
+            for (int i = 0; i < _badges.Length; i++)
+                _badgeSizes[i] = string.IsNullOrEmpty(_badges[i])
+                    ? Size.Empty
+                    : TextRenderer.MeasureText(_badges[i], Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPrefix);
+        }
+
+        /// <summary>미리 잰 크기로 배지 알약을 그리고 그 왼쪽 x를 돌려준다.</summary>
+        private int DrawBadge(Graphics g, AdvContextPalette palette, Rectangle row, string text, Size size, bool onSelectedRow)
+        {
             int h = size.Height + 2;
             int w = Math.Max(h, size.Width + 12);
             int x = row.Right - RowPadH - w;
@@ -267,6 +277,8 @@ namespace AdvancedControls.Controls
             if (hit != _hover)
             {
                 _hover = hit;
+                // 행은 여러 개의 독립 클릭 영역이므로 항목 위에서만 손 커서를 켠다.
+                Cursor = (hit >= 0 && UseHandCursor) ? Cursors.Hand : Cursors.Default;
                 Invalidate();
             }
             base.OnMouseMove(e);
@@ -368,6 +380,7 @@ namespace AdvancedControls.Controls
 
         protected override void OnFontChanged(EventArgs e)
         {
+            MeasureBadges();
             Invalidate();
             base.OnFontChanged(e);
         }

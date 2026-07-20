@@ -106,7 +106,7 @@ namespace AdvancedControls.Controls
             set { _increment = value <= 0 ? 1 : value; }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvContextColor.Primary)]
         [Description("채움(진행 부분)의 컨텍스트 색입니다.")]
         public AdvContextColor Context

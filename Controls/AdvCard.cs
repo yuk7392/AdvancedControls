@@ -79,7 +79,7 @@ namespace AdvancedControls.Controls
             set { if (_showFooterSeparator == value) return; _showFooterSeparator = value; PerformLayout(); Invalidate(); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvContextColor.Default)]
         [Description("카드의 컨텍스트 색입니다. Default가 아니면 머리글 띠와 테두리에 색을 입힙니다.")]
         public AdvContextColor Context

@@ -214,6 +214,8 @@ namespace AdvancedControls.Controls
             if (hit != _hover)
             {
                 _hover = hit;
+                // 셀은 여러 개의 독립 클릭 영역이므로 활성 셀 위에서만 손 커서를 켠다.
+                Cursor = (hit >= 0 && _cells[hit].Enabled && UseHandCursor) ? Cursors.Hand : Cursors.Default;
                 Invalidate();
             }
             base.OnMouseMove(e);

@@ -36,7 +36,7 @@ namespace AdvancedControls.Controls
             get { return new Size(44, 22); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvContextColor.Secondary)]
         [Description("배지의 컨텍스트 색입니다.")]
         public AdvContextColor Context
@@ -45,7 +45,7 @@ namespace AdvancedControls.Controls
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(true)]
         [Description("완전히 둥근 알약 모양으로 그릴지 여부입니다. 끄면 Styling의 모서리 반경을 따릅니다.")]
         public bool Pill

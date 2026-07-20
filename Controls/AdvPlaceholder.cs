@@ -31,6 +31,7 @@ namespace AdvancedControls.Controls
         private readonly AdvAnimator _anim;
         private AdvPlaceholderAnimation _animation = AdvPlaceholderAnimation.Glow;
         private AdvPlaceholderOptions _options;
+        private ColorBlend _waveBlend;   // 색은 테마에서만 오므로 프레임마다 재생성하지 않고 캐싱한다
 
         public AdvPlaceholder()
         {
@@ -45,7 +46,7 @@ namespace AdvancedControls.Controls
             get { return new Size(160, 16); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvPlaceholderAnimation.Glow)]
         [Description("자리표시자 애니메이션 종류입니다.")]
         public AdvPlaceholderAnimation Animation
@@ -125,14 +126,19 @@ namespace AdvancedControls.Controls
             var band = new Rectangle(bounds.Left + x, bounds.Top, bandW, bounds.Height);
             if (band.Width <= 0 || band.Height <= 0) return;
 
+            if (_waveBlend == null)
+            {
+                _waveBlend = new ColorBlend(3);
+                _waveBlend.Colors = new[] { Color.Transparent, Color.FromArgb(130, theme.Surface), Color.Transparent };
+                _waveBlend.Positions = new[] { 0f, 0.5f, 1f };
+            }
+
             var state = g.Save();
             g.SetClip(clip);
+            // LinearGradientBrush는 band 위치가 프레임마다 바뀌어 재사용이 불가하지만, 색 배열(ColorBlend)은 캐시본을 쓴다.
             using (var lg = new LinearGradientBrush(band, Color.Transparent, Color.Transparent, LinearGradientMode.Horizontal))
             {
-                var cb = new ColorBlend(3);
-                cb.Colors = new[] { Color.Transparent, Color.FromArgb(130, theme.Surface), Color.Transparent };
-                cb.Positions = new[] { 0f, 0.5f, 1f };
-                lg.InterpolationColors = cb;
+                lg.InterpolationColors = _waveBlend;
                 g.FillRectangle(lg, band);
             }
             g.Restore(state);
@@ -140,6 +146,7 @@ namespace AdvancedControls.Controls
 
         protected override void OnThemeChanged()
         {
+            _waveBlend = null;   // 색이 theme.Surface에서 오므로 테마가 바뀌면 다시 만든다
             Invalidate();
             base.OnThemeChanged();
         }

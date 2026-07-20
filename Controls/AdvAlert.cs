@@ -43,7 +43,7 @@ namespace AdvancedControls.Controls
             get { return new Padding(14, 10, 14, 10); }
         }
 
-        [Category("Appearance")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(AdvContextColor.Info)]
         [Description("알림의 컨텍스트 색입니다.")]
         public AdvContextColor Context
@@ -52,7 +52,7 @@ namespace AdvancedControls.Controls
             set { if (_context == value) return; _context = value; Invalidate(); }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("닫기(X) 버튼을 표시할지 여부입니다.")]
         public bool Dismissible

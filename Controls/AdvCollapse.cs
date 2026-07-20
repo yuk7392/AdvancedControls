@@ -47,6 +47,9 @@ namespace AdvancedControls.Controls
                 if (_collapsed == value) return;
                 _collapsed = value;
 
+                // 펼치면 감췄던 본문 자식을 즉시 되살린다(접힘 완료 시 다시 숨긴다).
+                if (!value && !DesignMode) RestoreChildrenAfterCollapse();
+
                 // 처음 접힐 때 현재 높이를 펼침 높이로 기억한다.
                 if (value && _expandedHeight <= 0 && Height > 0)
                     _expandedHeight = Height;
@@ -102,6 +105,8 @@ namespace AdvancedControls.Controls
             _settingHeight = true;
             Height = Math.Max(0, target);
             _settingHeight = false;
+            // 접힘이 끝나면 본문 자식을 숨겨 탭 순서에서 뺀다.
+            if (!DesignMode && _collapsed && _anim.Eased <= 0.001f) HideChildrenForCollapse();
             Invalidate();
         }
 
@@ -112,6 +117,13 @@ namespace AdvancedControls.Controls
             if (!_settingHeight && !_collapsed && !_anim.IsAnimating && Height > 0)
                 _expandedHeight = Height;
             base.OnResize(e);
+        }
+
+        protected override void OnControlAdded(ControlEventArgs e)
+        {
+            base.OnControlAdded(e);
+            // 접힌 상태에서 추가된 자식은 곧바로 숨겨 탭 순서에 남지 않게 한다.
+            if (!DesignMode && _collapsed) HideChildForCollapse(e.Control);
         }
 
         protected override void OnPaint(PaintEventArgs e)

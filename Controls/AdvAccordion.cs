@@ -26,6 +26,8 @@ namespace AdvancedControls.Controls
         private int _bodyHeight = 120;
         private bool _headerHover;
         private bool _settingHeight;
+        private Pen _sepPen;   // 전환 중 매 틱 재생성을 피하려 캐싱한다(색·두께만 갱신)
+        private AdvAccordionItemOptions _options;
 
         /// <summary>Expanded가 바뀌면 발생한다(부모 아코디언이 하나만 열기 위해 듣는다).</summary>
         public event EventHandler ExpandedChanged;
@@ -71,6 +73,8 @@ namespace AdvancedControls.Controls
             {
                 if (_expanded == value) return;
                 _expanded = value;
+                // 펼치면 감췄던 본문 자식을 즉시 되살려 열리는 동안 보이게 한다(접힘 완료 시 다시 숨긴다).
+                if (value && !DesignMode) RestoreChildrenAfterCollapse();
                 _anim.Duration = DesignMode ? 0 : EffectiveTheme.TransitionDuration;
                 _anim.AnimateTo(value ? 1f : 0f);
                 ApplyHeight();
@@ -96,6 +100,14 @@ namespace AdvancedControls.Controls
             }
         }
 
+        [Category(AdvCategory.Name)]
+        [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public AdvAccordionItemOptions AdvancedControlOptions
+        {
+            get { return _options ?? (_options = new AdvAccordionItemOptions(this)); }
+        }
+
         private int HeaderHeight
         {
             get { return Font.Height + 16; }
@@ -118,6 +130,8 @@ namespace AdvancedControls.Controls
         {
             if (IsDisposed || !IsHandleCreated) return;
             ApplyHeight();
+            // 접힘이 끝나면 본문 자식을 숨겨 탭 순서에서 뺀다(안 보이는데 포커스가 가는 것 방지).
+            if (!DesignMode && !_expanded && _anim.Eased <= 0.001f) HideChildrenForCollapse();
             Invalidate();
         }
 
@@ -180,8 +194,9 @@ namespace AdvancedControls.Controls
             if (_anim.Eased > 0.01f)
             {
                 int y = bounds.Top + bw + HeaderHeight;
-                using (var pen = new Pen(theme.Border, bw))
-                    g.DrawLine(pen, bounds.Left + bw, y, bounds.Right - bw, y);
+                if (_sepPen == null) _sepPen = new Pen(theme.Border, bw);
+                else { _sepPen.Color = theme.Border; _sepPen.Width = bw; }
+                g.DrawLine(_sepPen, bounds.Left + bw, y, bounds.Right - bw, y);
             }
 
             // 머리글에 키보드 포커스가 있으면 포커스 링을 그린다.
@@ -263,6 +278,13 @@ namespace AdvancedControls.Controls
             ApplyHeight();
         }
 
+        protected override void OnControlAdded(ControlEventArgs e)
+        {
+            base.OnControlAdded(e);
+            // 접힌 상태에서 추가된 자식은 곧바로 숨겨 탭 순서에 남지 않게 한다.
+            if (!DesignMode && !_expanded) HideChildForCollapse(e.Control);
+        }
+
         protected override void OnFontChanged(EventArgs e)
         {
             ApplyHeight();
@@ -276,6 +298,7 @@ namespace AdvancedControls.Controls
             {
                 _anim.ValueChanged -= OnAnimTick;
                 _anim.Dispose();
+                if (_sepPen != null) { _sepPen.Dispose(); _sepPen = null; }
             }
             base.Dispose(disposing);
         }
@@ -299,7 +322,7 @@ namespace AdvancedControls.Controls
             get { return new Size(340, 220); }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(true)]
         [Description("한 번에 하나의 섹션만 펼칠지 여부입니다.")]
         public bool SingleExpand
@@ -362,6 +385,15 @@ namespace AdvancedControls.Controls
             // 항목 사이·주변 배경을 테마 면색으로 채운다.
             e.Graphics.Clear(EffectiveTheme.Surface);
             base.OnPaint(e);
+        }
+    }
+
+    /// <summary>AdvAccordionItem이 추가한 속성. 다른 컨트롤과 동일하게 Styling/Palette 접근을 노출한다.</summary>
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public sealed class AdvAccordionItemOptions : AdvOptions
+    {
+        internal AdvAccordionItemOptions(AdvAccordionItem owner) : base(owner.Styling, owner.Palette)
+        {
         }
     }
 

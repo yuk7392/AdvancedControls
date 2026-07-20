@@ -77,7 +77,7 @@ namespace AdvancedControls.Controls
             }
         }
 
-        [Category("Behavior")]
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(8)]
         [Description("스크롤 없이 한 번에 보여줄 최대 항목 수입니다.")]
         public int MaxDropDownItems

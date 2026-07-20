@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
@@ -21,6 +22,7 @@ namespace AdvancedControls
         private AdvTheme _mergedTheme;
         private AdvTheme _mergedBase;
         private bool _colorsDirty;
+        private readonly List<Control> _autoHiddenChildren = new List<Control>();
 
         protected AdvContainerBase()
         {
@@ -270,6 +272,34 @@ namespace AdvancedControls
             if (_theme != null) return;
             OnThemeChanged();
             Invalidate();
+        }
+
+        /// <summary>
+        /// 접힘 등으로 본문을 숨길 때, 자식 하나가 보이는 상태면 감추고 무엇을 감췄는지 기억한다.
+        /// 사용자가 직접 숨겨 둔(이미 Visible=false인) 자식은 건드리지 않는다.
+        /// </summary>
+        protected void HideChildForCollapse(Control c)
+        {
+            if (c != null && c.Visible)
+            {
+                c.Visible = false;
+                _autoHiddenChildren.Add(c);
+            }
+        }
+
+        /// <summary>보이는 모든 자식을 <see cref="HideChildForCollapse"/> 규칙으로 감춘다.</summary>
+        protected void HideChildrenForCollapse()
+        {
+            foreach (Control c in Controls)
+                HideChildForCollapse(c);
+        }
+
+        /// <summary>위에서 감췄던 자식만 다시 보인다(사용자가 숨긴 자식은 그대로 둔다).</summary>
+        protected void RestoreChildrenAfterCollapse()
+        {
+            foreach (var c in _autoHiddenChildren)
+                if (!c.IsDisposed) c.Visible = true;
+            _autoHiddenChildren.Clear();
         }
 
         protected override void Dispose(bool disposing)
