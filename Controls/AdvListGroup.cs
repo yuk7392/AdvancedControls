@@ -40,6 +40,7 @@ namespace AdvancedControls.Controls
         private bool _selectionEnabled = true;
         private int _selectedIndex = -1;
         private int _hover = -1;
+        private AdvContextColor _context = AdvContextColor.Default;
         private AdvListGroupOptions _options;
 
         public event EventHandler<AdvListGroupItemEventArgs> ItemClicked;
@@ -93,6 +94,15 @@ namespace AdvancedControls.Controls
             set { if (_flush == value) return; _flush = value; Invalidate(); }
         }
 
+        [Category("Appearance")]
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("선택된 항목의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
+        public AdvContextColor Context
+        {
+            get { return _context; }
+            set { if (_context == value) return; _context = value; Invalidate(); }
+        }
+
         [Category("Behavior")]
         [DefaultValue(true)]
         [Description("항목을 클릭했을 때 선택 상태로 유지할지 여부입니다. 끄면 링크처럼 동작합니다.")]
@@ -140,6 +150,7 @@ namespace AdvancedControls.Controls
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = EffectiveTheme;
+            var palette = theme.ResolveContext(_context);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -170,20 +181,20 @@ namespace AdvancedControls.Controls
 
                 if (selected)
                 {
-                    using (var b = new SolidBrush(theme.Accent)) g.FillRectangle(b, row);
+                    using (var b = new SolidBrush(palette.Solid)) g.FillRectangle(b, row);
                 }
                 else if (hovered)
                 {
                     using (var b = new SolidBrush(theme.SurfaceHover)) g.FillRectangle(b, row);
                 }
 
-                Color fore = selected ? theme.OnAccent : (Enabled ? theme.Text : theme.TextDisabled);
+                Color fore = selected ? palette.OnSolid : (Enabled ? theme.Text : theme.TextDisabled);
 
                 // 배지 먼저 배치해 글자 폭을 그만큼 줄인다.
                 int textRight = row.Right - RowPadH;
                 string badge = i < _badges.Length ? _badges[i] : null;
                 if (!string.IsNullOrEmpty(badge))
-                    textRight = DrawBadge(g, theme, row, badge, selected) - 6;
+                    textRight = DrawBadge(g, palette, row, badge, selected) - 6;
 
                 var textRect = new Rectangle(row.Left + RowPadH, row.Top,
                                              Math.Max(0, textRight - (row.Left + RowPadH)), row.Height);
@@ -202,7 +213,7 @@ namespace AdvancedControls.Controls
         }
 
         /// <summary>배지 알약을 그리고 그 왼쪽 x를 돌려준다.</summary>
-        private int DrawBadge(Graphics g, AdvTheme theme, Rectangle row, string text, bool onSelectedRow)
+        private int DrawBadge(Graphics g, AdvContextPalette palette, Rectangle row, string text, bool onSelectedRow)
         {
             var size = TextRenderer.MeasureText(text, Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPrefix);
             int h = size.Height + 2;
@@ -211,8 +222,8 @@ namespace AdvancedControls.Controls
             int y = row.Top + (row.Height - h) / 2;
             var pill = new Rectangle(x, y, w, h);
 
-            Color bg = onSelectedRow ? theme.OnAccent : theme.Accent;
-            Color fg = onSelectedRow ? theme.Accent : theme.OnAccent;
+            Color bg = onSelectedRow ? palette.OnSolid : palette.Solid;
+            Color fg = onSelectedRow ? palette.Solid : palette.OnSolid;
 
             using (var path = AdvGraphics.CreateRoundedRect(pill, h / 2))
             using (var brush = new SolidBrush(bg))
@@ -285,8 +296,19 @@ namespace AdvancedControls.Controls
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class AdvListGroupOptions : AdvOptions
     {
+        private readonly AdvListGroup _owner;
+
         internal AdvListGroupOptions(AdvListGroup owner) : base(owner.Styling, owner.Palette)
         {
+            _owner = owner;
+        }
+
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("선택된 항목의 컨텍스트 색입니다.")]
+        public AdvContextColor Context
+        {
+            get { return _owner.Context; }
+            set { _owner.Context = value; }
         }
     }
 }

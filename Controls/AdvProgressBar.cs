@@ -21,7 +21,11 @@ namespace AdvancedControls.Controls
         private int _maximum = 100;
         private int _value;
         private bool _showPercentage;
+        private AdvContextColor _context = AdvContextColor.Default;
+        private bool _striped;
+        private bool _stripeAnimated = true;
         private readonly AdvAnimator _fillAnim;
+        private readonly AdvAnimator _stripeAnim;
         private AdvProgressBarOptions _options;
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
@@ -44,6 +48,9 @@ namespace AdvancedControls.Controls
 
             _fillAnim = new AdvAnimator(0);
             _fillAnim.ValueChanged += OnFillTick;
+
+            _stripeAnim = new AdvAnimator(0);
+            _stripeAnim.ValueChanged += OnStripeTick;
         }
 
         protected override Size DefaultSize
@@ -120,6 +127,33 @@ namespace AdvancedControls.Controls
             }
         }
 
+        [Browsable(false)]
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("진행 막대의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
+        public AdvContextColor Context
+        {
+            get { return _context; }
+            set { if (_context == value) return; _context = value; Invalidate(); }
+        }
+
+        [Browsable(false)]
+        [DefaultValue(false)]
+        [Description("채움에 빗금 무늬를 넣을지 여부입니다.")]
+        public bool Striped
+        {
+            get { return _striped; }
+            set { if (_striped == value) return; _striped = value; UpdateStripeAnim(); Invalidate(); }
+        }
+
+        [Browsable(false)]
+        [DefaultValue(true)]
+        [Description("빗금이 흐르는 애니메이션을 켤지 여부입니다. Striped가 켜져 있을 때만 적용됩니다.")]
+        public bool StripeAnimated
+        {
+            get { return _stripeAnimated; }
+            set { if (_stripeAnimated == value) return; _stripeAnimated = value; UpdateStripeAnim(); Invalidate(); }
+        }
+
         /// <summary>0~1 사이의 진행 비율.</summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -148,10 +182,54 @@ namespace AdvancedControls.Controls
             Invalidate();
         }
 
+        private void OnStripeTick(object sender, EventArgs e)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            Invalidate();
+        }
+
+        private void UpdateStripeAnim()
+        {
+            bool run = !DesignMode && IsHandleCreated && Visible && _striped && _stripeAnimated;
+            if (run && !_stripeAnim.IsLooping) _stripeAnim.StartLoop(1000);
+            else if (!run && _stripeAnim.IsLooping) _stripeAnim.StopLoop();
+        }
+
+        /// <summary>채움 위에 45° 반투명 빗금을 그린다. loop 위상만큼 옆으로 흐른다.</summary>
+        private void DrawStripes(Graphics g, Rectangle fillRect)
+        {
+            int sw = Math.Max(6, fillRect.Height);           // 빗금 폭
+            int period = sw * 2;
+            int offset = (int)(_stripeAnim.Value * period);   // 0~period 흐름
+            int h = fillRect.Height;
+
+            using (var brush = new SolidBrush(Color.FromArgb(38, 255, 255, 255)))
+            {
+                for (int x = fillRect.Left - h - period + offset; x < fillRect.Right + period; x += period)
+                {
+                    var pts = new[]
+                    {
+                        new Point(x, fillRect.Bottom),
+                        new Point(x + h, fillRect.Top),
+                        new Point(x + h + sw, fillRect.Top),
+                        new Point(x + sw, fillRect.Bottom)
+                    };
+                    g.FillPolygon(brush, pts);
+                }
+            }
+        }
+
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
             SyncFill(false);
+            UpdateStripeAnim();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            UpdateStripeAnim();
         }
 
         protected override void OnThemeChanged()
@@ -163,6 +241,8 @@ namespace AdvancedControls.Controls
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = EffectiveTheme;
+            var palette = theme.ResolveContext(_context);
+            bool neutral = _context == AdvContextColor.Default;
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -197,13 +277,23 @@ namespace AdvancedControls.Controls
                 var fillRect = new Rectangle(track.X, track.Y, fillWidth, track.Height);
 
                 using (var path = AdvGraphics.CreateRoundedRect(fillRect, corners))
-                using (var brush = AdvGraphics.CreateFillBrush(
-                           fillRect,
-                           Enabled ? theme.Accent : theme.TextDisabled,
-                           Enabled ? theme.AccentGradientEnd : Color.Empty,
-                           theme.GradientAngle))
                 {
-                    g.FillPath(brush, path);
+                    using (var brush = AdvGraphics.CreateFillBrush(
+                               fillRect,
+                               Enabled ? palette.Solid : theme.TextDisabled,
+                               Enabled && (neutral || _context == AdvContextColor.Primary) ? theme.AccentGradientEnd : Color.Empty,
+                               theme.GradientAngle))
+                    {
+                        g.FillPath(brush, path);
+                    }
+
+                    if (_striped && Enabled)
+                    {
+                        var state = g.Save();
+                        g.SetClip(path);
+                        DrawStripes(g, fillRect);
+                        g.Restore(state);
+                    }
                 }
             }
 
@@ -251,7 +341,7 @@ namespace AdvancedControls.Controls
                     if (edge > bounds.Left)
                     {
                         g.SetClip(Rectangle.FromLTRB(bounds.Left, bounds.Top, edge, bounds.Bottom));
-                        using (var b = new SolidBrush(theme.OnAccent))
+                        using (var b = new SolidBrush(theme.ResolveContext(_context).OnSolid))
                             g.DrawString(text, Font, b, bounds, fmt);
                     }
 
@@ -277,6 +367,8 @@ namespace AdvancedControls.Controls
             {
                 _fillAnim.ValueChanged -= OnFillTick;
                 _fillAnim.Dispose();
+                _stripeAnim.ValueChanged -= OnStripeTick;
+                _stripeAnim.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -299,6 +391,30 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.ShowPercentage; }
             set { _owner.ShowPercentage = value; }
+        }
+
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("진행 막대의 컨텍스트 색입니다.")]
+        public AdvContextColor Context
+        {
+            get { return _owner.Context; }
+            set { _owner.Context = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("채움에 빗금 무늬를 넣을지 여부입니다.")]
+        public bool Striped
+        {
+            get { return _owner.Striped; }
+            set { _owner.Striped = value; }
+        }
+
+        [DefaultValue(true)]
+        [Description("빗금이 흐르는 애니메이션을 켤지 여부입니다.")]
+        public bool StripeAnimated
+        {
+            get { return _owner.StripeAnimated; }
+            set { _owner.StripeAnimated = value; }
         }
     }
 }

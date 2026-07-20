@@ -27,6 +27,7 @@ namespace AdvancedControls.Controls
         private const int ImageTextGap = 6;
 
         private AdvButtonKind _kind = AdvButtonKind.Filled;
+        private AdvContextColor _context = AdvContextColor.Default;
         private DialogResult _dialogResult = DialogResult.None;
         private bool _isDefault;
         private Image _image;
@@ -109,6 +110,20 @@ namespace AdvancedControls.Controls
             {
                 if (_kind == value) return;
                 _kind = value;
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("버튼의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
+        public AdvContextColor Context
+        {
+            get { return _context; }
+            set
+            {
+                if (_context == value) return;
+                _context = value;
                 Invalidate();
             }
         }
@@ -308,8 +323,9 @@ namespace AdvancedControls.Controls
                 var ring = Rectangle.Inflate(bounds, -(bw + 1), -(bw + 1));
                 if (ring.Width > 0 && ring.Height > 0)
                 {
+                    var ctxPal = theme.ResolveContext(_context);
                     using (var path = AdvGraphics.CreateRoundedRect(ring, corners.Clamp(0, int.MaxValue)))
-                    using (var pen = new Pen(_kind == AdvButtonKind.Filled ? theme.OnAccent : theme.Accent, 1))
+                    using (var pen = new Pen(_kind == AdvButtonKind.Filled ? ctxPal.OnSolid : ctxPal.Solid, 1))
                         g.DrawPath(pen, path);
                 }
             }
@@ -362,28 +378,44 @@ namespace AdvancedControls.Controls
                 return;
             }
 
+            var p = theme.ResolveContext(_context);
+            // Default는 ResolveContext가 Accent 세트를 그대로 돌려주므로 기존 동작과 동일하다.
+            bool neutral = _context == AdvContextColor.Default;
             float t = HoverAmount;
 
             switch (_kind)
             {
                 case AdvButtonKind.Filled:
                     fill = IsPressed
-                         ? theme.AccentPressed
-                         : AdvGraphics.Blend(theme.Accent, theme.AccentHover, t);
-                    fillEnd = theme.AccentGradientEnd;
+                         ? p.SolidPressed
+                         : AdvGraphics.Blend(p.Solid, p.SolidHover, t);
+                    // 그라데이션 끝색은 Accent(Primary/Default)에만 있다.
+                    fillEnd = neutral || _context == AdvContextColor.Primary ? theme.AccentGradientEnd : Color.Empty;
                     border = fill;
-                    foreColor = theme.OnAccent;
+                    foreColor = p.OnSolid;
                     break;
 
                 case AdvButtonKind.Outline:
-                    fill = IsPressed
-                         ? theme.SurfacePressed
-                         : AdvGraphics.Blend(theme.Surface, theme.SurfaceHover, t);
-                    fillEnd = theme.SurfaceGradientEnd;
-                    border = IsPressed
-                           ? theme.BorderHover
-                           : AdvGraphics.Blend(theme.Border, theme.BorderHover, t);
-                    foreColor = theme.Text;
+                    if (neutral)
+                    {
+                        // 기존 중립 아웃라인 동작 유지(회색 테두리 + 본문색).
+                        fill = IsPressed
+                             ? theme.SurfacePressed
+                             : AdvGraphics.Blend(theme.Surface, theme.SurfaceHover, t);
+                        fillEnd = theme.SurfaceGradientEnd;
+                        border = IsPressed
+                               ? theme.BorderHover
+                               : AdvGraphics.Blend(theme.Border, theme.BorderHover, t);
+                        foreColor = theme.Text;
+                    }
+                    else
+                    {
+                        // 컨텍스트 아웃라인 — 평소엔 색 테두리+글자, 호버/누름에 채운다.
+                        fill = IsPressed ? p.SolidPressed : AdvGraphics.Blend(theme.Surface, p.Solid, t);
+                        fillEnd = Color.Empty;
+                        border = p.Solid;
+                        foreColor = (IsPressed || t >= 0.5f) ? p.OnSolid : p.Solid;
+                    }
                     break;
 
                 default: // Ghost
@@ -391,7 +423,7 @@ namespace AdvancedControls.Controls
                          ? theme.SurfacePressed
                          : AdvGraphics.Blend(Color.Transparent, theme.SurfaceHover, t);
                     border = Color.Transparent;
-                    foreColor = theme.Text;
+                    foreColor = neutral ? theme.Text : p.Solid;
                     break;
             }
         }
@@ -445,6 +477,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.Kind; }
             set { _owner.Kind = value; }
+        }
+
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("버튼의 컨텍스트 색입니다. Default는 테마 강조색(Accent)을 따릅니다.")]
+        public AdvContextColor Context
+        {
+            get { return _owner.Context; }
+            set { _owner.Context = value; }
         }
 
         [DefaultValue(true)]

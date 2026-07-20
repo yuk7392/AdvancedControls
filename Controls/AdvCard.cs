@@ -26,6 +26,7 @@ namespace AdvancedControls.Controls
         private string _footerText = string.Empty;
         private bool _showHeaderSeparator = true;
         private bool _showFooterSeparator = true;
+        private AdvContextColor _context = AdvContextColor.Default;
         private AdvCardOptions _options;
 
         [Category("Appearance")]
@@ -76,6 +77,15 @@ namespace AdvancedControls.Controls
         {
             get { return _showFooterSeparator; }
             set { if (_showFooterSeparator == value) return; _showFooterSeparator = value; PerformLayout(); Invalidate(); }
+        }
+
+        [Category("Appearance")]
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("카드의 컨텍스트 색입니다. Default가 아니면 머리글 띠와 테두리에 색을 입힙니다.")]
+        public AdvContextColor Context
+        {
+            get { return _context; }
+            set { if (_context == value) return; _context = value; Invalidate(); }
         }
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
@@ -138,8 +148,12 @@ namespace AdvancedControls.Controls
             var bounds = FrameBounds;
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
+            var palette = theme.ResolveContext(_context);
+            bool neutral = _context == AdvContextColor.Default;
+            Color borderColor = neutral ? theme.Border : palette.SubtleBorder;
+
             AdvFrameRenderer.Draw(g, bounds, theme, EffectiveCorners, EffectiveBorderWidth,
-                                  theme.Surface, theme.SurfaceGradientEnd, theme.Border,
+                                  theme.Surface, theme.SurfaceGradientEnd, borderColor,
                                   null, CurrentElevation, EffectiveBorderDash);
 
             int bw = EffectiveBorderWidth;
@@ -148,10 +162,19 @@ namespace AdvancedControls.Controls
             int headerH = HeaderHeight;
             if (headerH > 0)
             {
+                if (!neutral)
+                {
+                    // 컨텍스트 색 머리글 띠
+                    var band = new Rectangle(bounds.Left + bw, bounds.Top + bw,
+                                             Math.Max(0, bounds.Width - bw * 2), headerH);
+                    using (var bg = new SolidBrush(palette.SubtleBg))
+                        g.FillRectangle(bg, band);
+                }
+                Color headerColor = neutral ? textColor : palette.SubtleText;
                 var rect = new Rectangle(
                     bounds.Left + bw + PadH, bounds.Top + bw + PadV,
                     Math.Max(0, bounds.Width - bw * 2 - PadH * 2), Font.Height);
-                TextRenderer.DrawText(g, _headerText, Font, rect, textColor,
+                TextRenderer.DrawText(g, _headerText, Font, rect, headerColor,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
                 if (HeaderSeparatorVisible)
@@ -205,6 +228,14 @@ namespace AdvancedControls.Controls
         internal AdvCardOptions(AdvCard owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
+        }
+
+        [DefaultValue(AdvContextColor.Default)]
+        [Description("카드의 컨텍스트 색입니다.")]
+        public AdvContextColor Context
+        {
+            get { return _owner.Context; }
+            set { _owner.Context = value; }
         }
 
         [DefaultValue(true)]
