@@ -148,6 +148,12 @@
     <Compile Include="Controls\AdvPlaceholder.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\AdvRange.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvAccordion.cs">
+      <SubType>Component</SubType>
+    </Compile>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
