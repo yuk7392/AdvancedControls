@@ -361,3 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# 감사 리포트(로컬 작업물 — 커밋하지 않음)
+review-audit/
