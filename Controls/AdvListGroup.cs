@@ -28,6 +28,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ItemClicked")]
+    [DefaultProperty("Items")]
     [Description("선택 가능한 항목 목록입니다.")]
     public class AdvListGroup : AdvControlBase
     {
@@ -76,7 +77,7 @@ namespace AdvancedControls.Controls
             set
             {
                 _items = value ?? new string[0];
-                if (_selectedIndex >= _items.Length) _selectedIndex = -1;
+                if (_selectedIndex >= _items.Length) SelectedIndex = -1;   // setter 경유로 이벤트가 발생하게 한다
                 if (_focusRow >= _items.Length) _focusRow = -1;
                 Invalidate();
             }
@@ -119,7 +120,7 @@ namespace AdvancedControls.Controls
             {
                 if (_selectionEnabled == value) return;
                 _selectionEnabled = value;
-                if (!value) _selectedIndex = -1;
+                if (!value) SelectedIndex = -1;   // setter 경유로 이벤트가 발생하게 한다
                 Invalidate();
             }
         }
@@ -204,7 +205,7 @@ namespace AdvancedControls.Controls
 
                 var textRect = new Rectangle(row.Left + RowPadH, row.Top,
                                              Math.Max(0, textRight - (row.Left + RowPadH)), row.Height);
-                TextRenderer.DrawText(g, _items[i], Font, textRect, fore,
+                TextRenderer.DrawText(g, _items[i] ?? string.Empty, Font, textRect, fore,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
                 // 항목 사이 구분선.

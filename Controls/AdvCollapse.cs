@@ -13,6 +13,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("CollapsedChanged")]
+    [DefaultProperty("Collapsed")]
     [Description("높이 애니메이션으로 펼치고 접는 컨테이너입니다.")]
     public class AdvCollapse : AdvContainerBase
     {
@@ -50,9 +51,10 @@ namespace AdvancedControls.Controls
                 // 펼치면 감췄던 본문 자식을 즉시 되살린다(접힘 완료 시 다시 숨긴다).
                 if (!value && !DesignMode) RestoreChildrenAfterCollapse();
 
-                // 처음 접힐 때 현재 높이를 펼침 높이로 기억한다.
-                if (value && _expandedHeight <= 0 && Height > 0)
-                    _expandedHeight = Height;
+                // 처음 접힐 때 현재 높이를 펼침 높이로 기억한다. Height가 0이면 기본 높이로 폴백해
+                // 이후 다시 펼치지 못하고 고착되는 것을 막는다.
+                if (value && _expandedHeight <= 0)
+                    _expandedHeight = Height > 0 ? Height : DefaultSize.Height;
 
                 _anim.Duration = DesignMode ? 0 : EffectiveTheme.TransitionDuration;
                 _anim.AnimateTo(value ? 0f : 1f);

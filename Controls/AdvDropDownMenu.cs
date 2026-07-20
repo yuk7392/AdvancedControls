@@ -30,6 +30,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ItemClicked")]
+    [DefaultProperty("Items")]
     [Description("액션 목록이 떠오르는 드롭다운 메뉴 버튼입니다.")]
     public class AdvDropDownMenu : AdvControlBase
     {

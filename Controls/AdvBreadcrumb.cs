@@ -27,6 +27,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("ItemClicked")]
+    [DefaultProperty("Items")]
     [Description("경로를 구분자로 이어 보여주는 브레드크럼입니다.")]
     public class AdvBreadcrumb : AdvControlBase
     {
@@ -67,7 +68,8 @@ namespace AdvancedControls.Controls
             set
             {
                 _items.Clear();
-                if (value != null) _items.AddRange(value);
+                if (value != null)
+                    foreach (var s in value) _items.Add(s ?? string.Empty);   // null 원소를 빈 문자열로 정규화
                 InvalidateLayout();
             }
         }

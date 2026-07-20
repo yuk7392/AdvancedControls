@@ -14,6 +14,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultProperty("Value")]
+    [DefaultEvent("ValueChanged")]
     [Description("테마를 따르는 진행 막대입니다.")]
     public class AdvProgressBar : AdvControlBase
     {

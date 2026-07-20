@@ -151,8 +151,10 @@ namespace AdvancedControls.Controls
             }
             else // Grow
             {
-                int r = (int)((side / 2 - 1) * phase);
-                int alpha = (int)(255 * (1f - phase));
+                // 디자인 타임에는 루프가 돌지 않아 위상이 0(반경 0)이라 안 보인다. 대표 프레임을 그린다.
+                float p = DesignMode ? 0.5f : phase;
+                int r = (int)((side / 2 - 1) * p);
+                int alpha = (int)(255 * (1f - p));
                 if (alpha < 0) alpha = 0; else if (alpha > 255) alpha = 255;
                 if (r <= 0) return;
 

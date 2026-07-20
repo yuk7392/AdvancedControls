@@ -15,6 +15,7 @@ namespace AdvancedControls.Controls
     /// </summary>
     [ToolboxItem(true)]
     [DefaultEvent("CurrentPageChanged")]
+    [DefaultProperty("CurrentPage")]
     [Description("페이지 번호를 나열하는 페이지네이션 컨트롤입니다.")]
     public class AdvPagination : AdvControlBase
     {
@@ -31,6 +32,7 @@ namespace AdvancedControls.Controls
         private const int CellPadH = 10;   // 번호 좌우 여백
         private const int MinCell = 30;     // 셀 최소 폭/높이
         private const int Gap = 4;          // 셀 사이 간격
+        private const int MaxPages = 10000; // 병적 입력 방어(전 페이지 즉시 생성으로 인한 UI 정지/OOM)
 
         private int _pageCount = 1;
         private int _currentPage = 1;
@@ -76,7 +78,7 @@ namespace AdvancedControls.Controls
             get { return _pageCount; }
             set
             {
-                value = Math.Max(1, value);
+                value = Math.Min(Math.Max(1, value), MaxPages);
                 if (_pageCount == value) return;
                 _pageCount = value;
                 if (_currentPage > _pageCount) _currentPage = _pageCount;

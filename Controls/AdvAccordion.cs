@@ -25,7 +25,6 @@ namespace AdvancedControls.Controls
         private bool _expanded;
         private int _bodyHeight = 120;
         private bool _headerHover;
-        private bool _settingHeight;
         private Pen _sepPen;   // 전환 중 매 틱 재생성을 피하려 캐싱한다(색·두께만 갱신)
         private AdvAccordionItemOptions _options;
 
@@ -121,9 +120,7 @@ namespace AdvancedControls.Controls
             int target = HeaderHeight + (int)Math.Round(_bodyHeight * _anim.Eased);
             if (Height == target) return;
 
-            _settingHeight = true;
             Height = target;      // Dock=Top이면 부모가 형제들을 다시 배치한다
-            _settingHeight = false;
         }
 
         private void OnAnimTick(object sender, EventArgs e)

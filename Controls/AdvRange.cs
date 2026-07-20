@@ -128,6 +128,12 @@ namespace AdvancedControls.Controls
             get { int span = _maximum - _minimum; return span <= 0 ? 0f : (float)(_value - _minimum) / span; }
         }
 
+        /// <summary>PageUp/PageDown 한 번의 이동량. 범위의 1/10(최소 1).</summary>
+        private int LargeChange
+        {
+            get { return Math.Max(1, (_maximum - _minimum) / 10); }
+        }
+
         private int ThumbDiameter
         {
             get { return Math.Min(FrameBounds.Height, 20); }
@@ -222,8 +228,16 @@ namespace AdvancedControls.Controls
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            if (_dragging) SetValueFromX(e.X);
+            // 캡처가 비정상으로 풀렸을 때를 대비해 왼쪽 버튼이 실제로 눌린 동안만 드래그로 인정한다.
+            if (_dragging && (e.Button & MouseButtons.Left) != 0) SetValueFromX(e.X);
             base.OnMouseMove(e);
+        }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            // 드래그 중 캡처가 풀리면(MessageBox·Alt+Tab·Enabled=false 등) 드래그 상태를 확실히 내린다.
+            _dragging = false;
+            base.OnMouseCaptureChanged(e);
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
@@ -257,6 +271,8 @@ namespace AdvancedControls.Controls
                 case Keys.Down:
                 case Keys.Home:
                 case Keys.End:
+                case Keys.PageUp:
+                case Keys.PageDown:
                     return true;
                 default:
                     return base.IsInputKey(keyData);
@@ -273,6 +289,8 @@ namespace AdvancedControls.Controls
                 case Keys.Up: Value = _value + _increment; e.Handled = true; break;
                 case Keys.Home: Value = _minimum; e.Handled = true; break;
                 case Keys.End: Value = _maximum; e.Handled = true; break;
+                case Keys.PageUp: Value = _value + LargeChange; e.Handled = true; break;
+                case Keys.PageDown: Value = _value - LargeChange; e.Handled = true; break;
             }
             base.OnKeyDown(e);
         }
