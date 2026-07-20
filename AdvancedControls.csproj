@@ -113,6 +113,27 @@
     <Compile Include="Controls\Internal\AdvScrollBar.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\AdvCloseButton.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvCard.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvPagination.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvBreadcrumb.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvCollapse.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvListGroup.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvDropDownMenu.cs">
+      <SubType>Component</SubType>
+    </Compile>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
