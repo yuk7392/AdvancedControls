@@ -32,6 +32,10 @@ namespace AdvancedControls.Controls
 
         public AdvAccordionItem()
         {
+            // 머리글에 키보드 포커스를 주어 Enter/Space로 펼치고 접을 수 있게 한다.
+            SetStyle(ControlStyles.Selectable, true);
+            TabStop = true;
+
             _anim = new AdvAnimator(0);
             _anim.ValueChanged += OnAnimTick;
             _anim.SetImmediate(0f);
@@ -180,6 +184,14 @@ namespace AdvancedControls.Controls
                     g.DrawLine(pen, bounds.Left + bw, y, bounds.Right - bw, y);
             }
 
+            // 머리글에 키보드 포커스가 있으면 포커스 링을 그린다.
+            if (Focused && Enabled)
+            {
+                var fr = Rectangle.Inflate(header, -2, -2);
+                using (var pen = new Pen(theme.FocusRing, 1.5f))
+                    g.DrawRectangle(pen, fr.Left, fr.Top, fr.Width - 1, fr.Height - 1);
+            }
+
             base.OnPaint(e);
         }
 
@@ -205,7 +217,44 @@ namespace AdvancedControls.Controls
         {
             base.OnMouseDown(e);
             if (e.Button == MouseButtons.Left && HeaderRect.Contains(e.Location))
+            {
+                if (!Focused) Focus();
                 Expanded = !Expanded;
+            }
+        }
+
+        /// <summary>Enter/Space가 포커스 이동에 먹히지 않고 이 컨트롤로 오게 한다.</summary>
+        protected override bool IsInputKey(Keys keyData)
+        {
+            switch (keyData & Keys.KeyCode)
+            {
+                case Keys.Return:
+                case Keys.Space:
+                    return true;
+            }
+            return base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space)
+            {
+                Expanded = !Expanded;
+                e.Handled = true;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnGotFocus(e);
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnLostFocus(e);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -274,6 +323,9 @@ namespace AdvancedControls.Controls
             if (item != null)
             {
                 item.Dock = DockStyle.Top;
+                // Dock=Top은 나중에 도킹된 항목을 위쪽에 앉혀, 그대로 두면 추가 순서의 역순으로 쌓인다.
+                // 새 항목을 z-순서 맨 앞으로 보내(가장 늦게 도킹되게) 추가 순서를 위→아래로 유지한다.
+                item.BringToFront();
                 item.ExpandedChanged += ItemExpandedChanged;
             }
         }

@@ -40,6 +40,7 @@ namespace AdvancedControls.Controls
         private bool _selectionEnabled = true;
         private int _selectedIndex = -1;
         private int _hover = -1;
+        private int _focusRow = -1;
         private AdvContextColor _context = AdvContextColor.Default;
         private AdvListGroupOptions _options;
 
@@ -48,8 +49,11 @@ namespace AdvancedControls.Controls
 
         public AdvListGroup()
         {
-            SetStyle(ControlStyles.Selectable, false);
-            TabStop = false;
+            // 행 단위로 키보드 포커스를 옮기므로 컨트롤을 포커스 가능하게 한다.
+            // 포커스 표시는 행별 링으로 직접 그리므로 전체 글로우 여백은 예약하지 않는다(레이아웃 밀림 방지).
+            SetStyle(ControlStyles.Selectable, true);
+            TabStop = true;
+            Styling.ShowFocusGlow = false;
         }
 
         protected override Size DefaultSize
@@ -72,6 +76,7 @@ namespace AdvancedControls.Controls
             {
                 _items = value ?? new string[0];
                 if (_selectedIndex >= _items.Length) _selectedIndex = -1;
+                if (_focusRow >= _items.Length) _focusRow = -1;
                 Invalidate();
             }
         }
@@ -207,6 +212,14 @@ namespace AdvancedControls.Controls
                     using (var pen = new Pen(theme.Border, 1))
                         g.DrawLine(pen, row.Left + RowPadH, row.Bottom, row.Right - RowPadH, row.Bottom);
                 }
+
+                // 키보드 포커스가 놓인 행에 포커스 링을 그린다.
+                if (Focused && i == _focusRow)
+                {
+                    var fr = Rectangle.Inflate(row, -2, -2);
+                    using (var pen = new Pen(theme.FocusRing, 1.5f))
+                        g.DrawRectangle(pen, fr.Left, fr.Top, fr.Width - 1, fr.Height - 1);
+                }
             }
 
             base.OnPaint(e);
@@ -270,13 +283,87 @@ namespace AdvancedControls.Controls
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left) return;
 
+            if (!Focused) Focus();
+
             int hit = HitTest(e.Location);
             if (hit < 0) return;
 
-            if (_selectionEnabled) SelectedIndex = hit;
+            SetFocusRow(hit);
+            ActivateRow(hit);
+        }
+
+        private void ActivateRow(int i)
+        {
+            if (i < 0 || i >= _items.Length) return;
+
+            if (_selectionEnabled) SelectedIndex = i;
 
             var h = ItemClicked;
-            if (h != null) h(this, new AdvListGroupItemEventArgs(hit, _items[hit]));
+            if (h != null) h(this, new AdvListGroupItemEventArgs(i, _items[i]));
+        }
+
+        private int DefaultFocusRow()
+        {
+            return _selectedIndex >= 0 ? _selectedIndex : 0;
+        }
+
+        private void SetFocusRow(int i)
+        {
+            if (_items.Length == 0) i = -1;
+            else if (i < 0) i = 0;
+            else if (i > _items.Length - 1) i = _items.Length - 1;
+            if (_focusRow == i) return;
+            _focusRow = i;
+            Invalidate();
+        }
+
+        protected override bool IsInputKey(Keys keyData)
+        {
+            switch (keyData & Keys.KeyCode)
+            {
+                case Keys.Up:
+                case Keys.Down:
+                case Keys.Home:
+                case Keys.End:
+                    return true;
+            }
+            return base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.Up:
+                    SetFocusRow(_focusRow < 0 ? DefaultFocusRow() : _focusRow - 1);
+                    e.Handled = true;
+                    break;
+                case Keys.Down:
+                    SetFocusRow(_focusRow < 0 ? DefaultFocusRow() : _focusRow + 1);
+                    e.Handled = true;
+                    break;
+                case Keys.Home: SetFocusRow(0); e.Handled = true; break;
+                case Keys.End: SetFocusRow(_items.Length - 1); e.Handled = true; break;
+                case Keys.Enter:
+                case Keys.Space:
+                    if (_focusRow >= 0) ActivateRow(_focusRow);
+                    e.Handled = true;
+                    break;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            if (_focusRow < 0 && _items.Length > 0) _focusRow = DefaultFocusRow();
+            Invalidate();
+            base.OnGotFocus(e);
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnLostFocus(e);
         }
 
         protected override void OnFontChanged(EventArgs e)

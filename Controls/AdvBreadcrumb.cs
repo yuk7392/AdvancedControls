@@ -34,14 +34,18 @@ namespace AdvancedControls.Controls
         private readonly List<Rectangle> _itemRects = new List<Rectangle>();
         private string _separator = " / ";
         private int _hover = -1;
+        private int _focusLink = -1;
         private AdvBreadcrumbOptions _options;
 
         public event EventHandler<AdvBreadcrumbClickedEventArgs> ItemClicked;
 
         public AdvBreadcrumb()
         {
-            SetStyle(ControlStyles.Selectable, false);
-            TabStop = false;
+            // 링크 단위로 키보드 포커스를 옮기므로 컨트롤을 포커스 가능하게 한다.
+            // 포커스 표시는 링크별 링으로 직접 그리므로 전체 글로우 여백은 예약하지 않는다(레이아웃 밀림 방지).
+            SetStyle(ControlStyles.Selectable, true);
+            TabStop = true;
+            Styling.ShowFocusGlow = false;
         }
 
         protected override Size DefaultSize
@@ -94,6 +98,7 @@ namespace AdvancedControls.Controls
         private void InvalidateLayout()
         {
             _itemRects.Clear();
+            if (_focusLink > _items.Count - 2) _focusLink = -1;
             Invalidate();
         }
 
@@ -160,6 +165,14 @@ namespace AdvancedControls.Controls
                 }
             }
 
+            // 키보드 포커스가 놓인 링크에 포커스 링을 그린다.
+            if (Enabled && Focused && _focusLink >= 0 && _focusLink < _itemRects.Count)
+            {
+                var fr = Rectangle.Inflate(_itemRects[_focusLink], 2, -1);
+                using (var pen = new Pen(theme.FocusRing, 1.5f))
+                    g.DrawRectangle(pen, fr.Left, fr.Top, fr.Width - 1, fr.Height - 1);
+            }
+
             base.OnPaint(e);
         }
 
@@ -195,11 +208,75 @@ namespace AdvancedControls.Controls
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left) return;
 
+            if (!Focused) Focus();
+
             int hit = HitTestLink(e.Location);
             if (hit < 0) return;
 
+            SetFocusLink(hit);
+            ActivateLink(hit);
+        }
+
+        private void ActivateLink(int i)
+        {
+            if (i < 0 || i >= _items.Count - 1) return;   // 마지막 항목은 링크가 아니다
             var h = ItemClicked;
-            if (h != null) h(this, new AdvBreadcrumbClickedEventArgs(hit, _items[hit]));
+            if (h != null) h(this, new AdvBreadcrumbClickedEventArgs(i, _items[i]));
+        }
+
+        private void SetFocusLink(int i)
+        {
+            int maxLink = _items.Count - 2;
+            if (maxLink < 0)
+            {
+                if (_focusLink != -1) { _focusLink = -1; Invalidate(); }
+                return;
+            }
+            if (i < 0) i = 0;
+            else if (i > maxLink) i = maxLink;
+            if (_focusLink == i) return;
+            _focusLink = i;
+            Invalidate();
+        }
+
+        protected override bool IsInputKey(Keys keyData)
+        {
+            switch (keyData & Keys.KeyCode)
+            {
+                case Keys.Left:
+                case Keys.Right:
+                case Keys.Home:
+                case Keys.End:
+                    return true;
+            }
+            return base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.Left: SetFocusLink(_focusLink < 0 ? 0 : _focusLink - 1); e.Handled = true; break;
+                case Keys.Right: SetFocusLink(_focusLink < 0 ? 0 : _focusLink + 1); e.Handled = true; break;
+                case Keys.Home: SetFocusLink(0); e.Handled = true; break;
+                case Keys.End: SetFocusLink(_items.Count - 2); e.Handled = true; break;
+                case Keys.Enter:
+                case Keys.Space: if (_focusLink >= 0) ActivateLink(_focusLink); e.Handled = true; break;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            if (_focusLink < 0 && _items.Count >= 2) _focusLink = 0;
+            Invalidate();
+            base.OnGotFocus(e);
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnLostFocus(e);
         }
 
         protected override void OnResize(EventArgs e)

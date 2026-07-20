@@ -27,6 +27,8 @@ namespace AdvancedControls.Controls
         private readonly AdvAnimator _fillAnim;
         private readonly AdvAnimator _stripeAnim;
         private AdvProgressBarOptions _options;
+        private SolidBrush _stripeBrush;                      // 빗금용 캐시 브러시(알파 고정)
+        private readonly Point[] _stripePts = new Point[4];   // 빗금 폴리곤 좌표 재사용 버퍼
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
         [Category(AdvCategory.Name)]
@@ -203,19 +205,17 @@ namespace AdvancedControls.Controls
             int offset = (int)(_stripeAnim.Value * period);   // 0~period 흐름
             int h = fillRect.Height;
 
-            using (var brush = new SolidBrush(Color.FromArgb(38, 255, 255, 255)))
+            // Bootstrap .progress-bar-striped와 동일하게 라이트/다크 무관 고정 반투명 흰색(rgba(255,255,255,.15)).
+            if (_stripeBrush == null)
+                _stripeBrush = new SolidBrush(Color.FromArgb(38, 255, 255, 255));
+
+            for (int x = fillRect.Left - h - period + offset; x < fillRect.Right + period; x += period)
             {
-                for (int x = fillRect.Left - h - period + offset; x < fillRect.Right + period; x += period)
-                {
-                    var pts = new[]
-                    {
-                        new Point(x, fillRect.Bottom),
-                        new Point(x + h, fillRect.Top),
-                        new Point(x + h + sw, fillRect.Top),
-                        new Point(x + sw, fillRect.Bottom)
-                    };
-                    g.FillPolygon(brush, pts);
-                }
+                _stripePts[0] = new Point(x, fillRect.Bottom);
+                _stripePts[1] = new Point(x + h, fillRect.Top);
+                _stripePts[2] = new Point(x + h + sw, fillRect.Top);
+                _stripePts[3] = new Point(x + sw, fillRect.Bottom);
+                g.FillPolygon(_stripeBrush, _stripePts);
             }
         }
 
@@ -369,6 +369,7 @@ namespace AdvancedControls.Controls
                 _fillAnim.Dispose();
                 _stripeAnim.ValueChanged -= OnStripeTick;
                 _stripeAnim.Dispose();
+                if (_stripeBrush != null) { _stripeBrush.Dispose(); _stripeBrush = null; }
             }
             base.Dispose(disposing);
         }

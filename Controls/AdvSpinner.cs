@@ -31,6 +31,8 @@ namespace AdvancedControls.Controls
         private int _thickness;          // 0이면 크기에서 자동 계산
         private int _periodMs = 800;
         private AdvSpinnerOptions _options;
+        private Pen _pen;             // 매 틱 재생성을 피하려 캐싱한다(색·두께만 갱신)
+        private SolidBrush _brush;    // Grow 스타일용 캐시 브러시(색만 갱신)
 
         public AdvSpinner()
         {
@@ -138,12 +140,14 @@ namespace AdvancedControls.Controls
                 var arc = Rectangle.Inflate(sq, -th, -th);
                 if (arc.Width <= 0 || arc.Height <= 0) return;
 
-                using (var pen = new Pen(palette.Solid, th))
+                if (_pen == null)
+                    _pen = new Pen(palette.Solid, th) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+                else
                 {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    g.DrawArc(pen, arc.X, arc.Y, arc.Width, arc.Height, phase * 360f, 270f);
+                    _pen.Color = palette.Solid;
+                    _pen.Width = th;
                 }
+                g.DrawArc(_pen, arc.X, arc.Y, arc.Width, arc.Height, phase * 360f, 270f);
             }
             else // Grow
             {
@@ -153,8 +157,10 @@ namespace AdvancedControls.Controls
                 if (r <= 0) return;
 
                 int cx = sq.Left + side / 2, cy = sq.Top + side / 2;
-                using (var brush = new SolidBrush(Color.FromArgb(alpha, palette.Solid)))
-                    g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
+                var c = Color.FromArgb(alpha, palette.Solid);
+                if (_brush == null) _brush = new SolidBrush(c);
+                else _brush.Color = c;
+                g.FillEllipse(_brush, cx - r, cy - r, r * 2, r * 2);
             }
         }
 
@@ -164,6 +170,8 @@ namespace AdvancedControls.Controls
             {
                 _anim.ValueChanged -= OnAnimTick;
                 _anim.Dispose();
+                if (_pen != null) { _pen.Dispose(); _pen = null; }
+                if (_brush != null) { _brush.Dispose(); _brush = null; }
             }
             base.Dispose(disposing);
         }

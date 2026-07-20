@@ -192,7 +192,12 @@ namespace AdvancedControls.Controls
 
         private void PopupItemChosen(object sender, AdvDropDownList.ItemEventArgs e)
         {
-            int idx = e.Index;
+            ChooseIndex(e.Index);
+        }
+
+        /// <summary>항목을 확정한다(팝업을 닫고 ItemClicked를 발생). 마우스 클릭·키보드 Enter가 공유한다.</summary>
+        private void ChooseIndex(int idx)
+        {
             HideDropDown();
 
             var h = ItemClicked;
@@ -201,6 +206,26 @@ namespace AdvancedControls.Controls
                 string text = idx >= 0 && idx < _items.Length ? _items[idx] : null;
                 h(this, new AdvDropDownItemClickedEventArgs(idx, text));
             }
+        }
+
+        /// <summary>열린 팝업의 하이라이트를 index로 옮기고 화면 밖이면 보이도록 스크롤한다.</summary>
+        private void SetHighlight(int index)
+        {
+            if (!IsDroppedDown) return;
+            int count = _itemObjects.Count;
+            if (count == 0) return;
+            if (index < 0) index = 0;
+            else if (index > count - 1) index = count - 1;
+            _popup.List.SelectedIndex = index;
+            _popup.EnsureVisible(index);
+        }
+
+        /// <summary>현재 하이라이트에서 delta만큼 이동한다. 아직 없으면 방향에 맞춰 처음/끝에서 시작한다.</summary>
+        private void MoveHighlight(int delta)
+        {
+            if (!IsDroppedDown) return;
+            int cur = _popup.List.SelectedIndex;
+            SetHighlight(cur < 0 ? (delta > 0 ? 0 : _itemObjects.Count - 1) : cur + delta);
         }
 
         private void PopupClosed(object sender, ToolStripDropDownClosedEventArgs e)
@@ -224,14 +249,55 @@ namespace AdvancedControls.Controls
             else ShowDropDown();
         }
 
+        /// <summary>방향키·Home/End(그리고 열려 있을 때 Enter)를 컨트롤이 직접 받도록 알린다.</summary>
+        protected override bool IsInputKey(Keys keyData)
+        {
+            switch (keyData & Keys.KeyCode)
+            {
+                case Keys.Up:
+                case Keys.Down:
+                case Keys.Home:
+                case Keys.End:
+                    return true;
+                case Keys.Return:
+                    if (IsDroppedDown) return true;
+                    break;
+            }
+            return base.IsInputKey(keyData);
+        }
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter
-                || (e.KeyCode == Keys.Down && e.Alt))
+            if (IsDroppedDown)
             {
-                if (IsDroppedDown) HideDropDown(); else ShowDropDown();
+                // 팝업이 열려 있으면 방향키로 하이라이트를 옮기고 Enter/Space로 확정한다.
+                switch (e.KeyCode)
+                {
+                    case Keys.Down: MoveHighlight(1); e.Handled = true; break;
+                    case Keys.Up: MoveHighlight(-1); e.Handled = true; break;
+                    case Keys.Home: SetHighlight(0); e.Handled = true; break;
+                    case Keys.End: SetHighlight(_itemObjects.Count - 1); e.Handled = true; break;
+                    case Keys.Enter:
+                    case Keys.Space:
+                    {
+                        int idx = _popup.List.SelectedIndex;
+                        if (idx >= 0) ChooseIndex(idx); else HideDropDown();
+                        e.Handled = true;
+                        break;
+                    }
+                    case Keys.Escape:
+                        HideDropDown();
+                        e.Handled = true;
+                        break;
+                }
+            }
+            else if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter
+                     || (e.KeyCode == Keys.Down && e.Alt))
+            {
+                ShowDropDown();
                 e.Handled = true;
             }
+
             base.OnKeyDown(e);
         }
 

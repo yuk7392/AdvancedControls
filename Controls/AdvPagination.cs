@@ -35,6 +35,7 @@ namespace AdvancedControls.Controls
         private int _pageCount = 1;
         private int _currentPage = 1;
         private int _hover = -1;
+        private int _focusIndex = -1;
         private readonly List<Cell> _cells = new List<Cell>();
         private AdvPaginationOptions _options;
 
@@ -42,9 +43,11 @@ namespace AdvancedControls.Controls
 
         public AdvPagination()
         {
-            // 스트립 전체는 포커스 대상이 아니다(셀이 클릭 대상). 글로우 여백 예약도 막는다.
-            SetStyle(ControlStyles.Selectable, false);
-            TabStop = false;
+            // 셀 단위로 키보드 포커스를 옮기므로 컨트롤을 포커스 가능하게 한다.
+            // 포커스 표시는 셀별 링으로 직접 그리므로 전체 글로우 여백은 예약하지 않는다(레이아웃 밀림 방지).
+            SetStyle(ControlStyles.Selectable, true);
+            TabStop = true;
+            Styling.ShowFocusGlow = false;
         }
 
         protected override Size DefaultSize
@@ -119,6 +122,8 @@ namespace AdvancedControls.Controls
             }
 
             AddCell(ref x, CellKind.Next, 0, MinCell, h, _currentPage < _pageCount);
+
+            if (_focusIndex >= _cells.Count) _focusIndex = -1;
         }
 
         private void AddCell(ref int x, CellKind kind, int page, int w, int h, bool enabled)
@@ -182,6 +187,15 @@ namespace AdvancedControls.Controls
                             : AdvGraphics.ChevronDirection.Right;
                     AdvGraphics.DrawChevron(g, cell.Bounds, dir, fore, 8, 5, 1.6f, 0);
                 }
+
+                // 키보드 포커스가 놓인 셀에 포커스 링을 그린다.
+                if (Focused && i == _focusIndex && cell.Enabled)
+                {
+                    var rr = Rectangle.Inflate(cell.Bounds, -1, -1);
+                    using (var path = AdvGraphics.CreateRoundedRect(rr, EffectiveCorners))
+                    using (var pen = new Pen(theme.FocusRing, 1.5f))
+                        g.DrawPath(pen, path);
+                }
             }
 
             base.OnPaint(e);
@@ -216,10 +230,19 @@ namespace AdvancedControls.Controls
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left) return;
 
+            if (!Focused) Focus();
+
             int hit = HitTest(e.Location);
             if (hit < 0) return;
 
-            var cell = _cells[hit];
+            if (_cells[hit].Enabled) SetFocusIndex(hit);
+            ActivateCell(hit);
+        }
+
+        private void ActivateCell(int i)
+        {
+            if (i < 0 || i >= _cells.Count) return;
+            var cell = _cells[i];
             if (!cell.Enabled) return;
 
             switch (cell.Kind)
@@ -228,6 +251,79 @@ namespace AdvancedControls.Controls
                 case CellKind.Next: CurrentPage = _currentPage + 1; break;
                 default: CurrentPage = cell.Page; break;
             }
+        }
+
+        private void SetFocusIndex(int i)
+        {
+            if (_focusIndex == i) return;
+            _focusIndex = i;
+            Invalidate();
+        }
+
+        private void MoveFocus(int dir)
+        {
+            int n = _cells.Count;
+            for (int j = _focusIndex + dir; j >= 0 && j < n; j += dir)
+                if (_cells[j].Enabled) { SetFocusIndex(j); return; }
+        }
+
+        private void FocusEdge(int dir)   // +1: 첫 활성 셀, -1: 마지막 활성 셀
+        {
+            int n = _cells.Count;
+            if (dir > 0) { for (int j = 0; j < n; j++) if (_cells[j].Enabled) { SetFocusIndex(j); return; } }
+            else { for (int j = n - 1; j >= 0; j--) if (_cells[j].Enabled) { SetFocusIndex(j); return; } }
+        }
+
+        private int ActivePageCellIndex()
+        {
+            for (int i = 0; i < _cells.Count; i++)
+                if (_cells[i].Kind == CellKind.Page && _cells[i].Page == _currentPage) return i;
+            return -1;
+        }
+
+        protected override bool IsInputKey(Keys keyData)
+        {
+            switch (keyData & Keys.KeyCode)
+            {
+                case Keys.Left:
+                case Keys.Right:
+                case Keys.Home:
+                case Keys.End:
+                    return true;
+            }
+            return base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.Left: MoveFocus(-1); e.Handled = true; break;
+                case Keys.Right: MoveFocus(1); e.Handled = true; break;
+                case Keys.Home: FocusEdge(1); e.Handled = true; break;
+                case Keys.End: FocusEdge(-1); e.Handled = true; break;
+                case Keys.Enter:
+                case Keys.Space: ActivateCell(_focusIndex); e.Handled = true; break;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            if (_cells.Count == 0) RebuildCells();
+            if (_focusIndex < 0 || _focusIndex >= _cells.Count || !_cells[_focusIndex].Enabled)
+            {
+                int a = ActivePageCellIndex();
+                if (a >= 0) _focusIndex = a; else FocusEdge(1);
+            }
+            Invalidate();
+            base.OnGotFocus(e);
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnLostFocus(e);
         }
 
         protected override void OnResize(EventArgs e)
