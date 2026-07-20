@@ -58,6 +58,17 @@ namespace AdvancedControls.Theming
         /// <summary>드롭다운·팝업처럼 떠 있는 면에 쓰는 그림자.</summary>
         public AdvShadow Elevation { get; set; }
 
+        /// <summary>
+        /// 이 테마의 복사본. 컨트롤별 색 재정의(<see cref="AdvColorOverrides"/>)를 입힐 때
+        /// 공유 원본을 건드리지 않으려고 쓴다.
+        /// MemberwiseClone이라 필드가 늘어도 자동으로 함께 복사된다. Color·AdvCorners는
+        /// 값 형식이라 독립 복사되고, AdvShadow는 참조를 공유하지만 병합에서 바꾸지 않으므로 안전하다.
+        /// </summary>
+        public AdvTheme Clone()
+        {
+            return (AdvTheme)MemberwiseClone();
+        }
+
         public static AdvTheme CreateLight()
         {
             return new AdvTheme

@@ -476,7 +476,7 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvTextBox _owner;
 
-        internal AdvTextBoxOptions(AdvTextBox owner) : base(owner.Styling)
+        internal AdvTextBoxOptions(AdvTextBox owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
         }

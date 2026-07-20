@@ -16,10 +16,12 @@ namespace AdvancedControls
     public class AdvOptions
     {
         private readonly AdvAppearance _appearance;
+        private readonly AdvColorOverrides _palette;
 
-        internal AdvOptions(AdvAppearance appearance)
+        internal AdvOptions(AdvAppearance appearance, AdvColorOverrides palette)
         {
             _appearance = appearance;
+            _palette = palette;
         }
 
         /// <summary>모서리 반경·테두리 두께·전환 시간 등 모양 설정.</summary>
@@ -27,6 +29,13 @@ namespace AdvancedControls
         public AdvAppearance Styling
         {
             get { return _appearance; }
+        }
+
+        /// <summary>이 컨트롤에만 적용하는 색. 비워 둔 색은 테마를 따른다.</summary>
+        [Description("이 컨트롤에만 적용하는 색입니다. 펼쳐서 색을 지정하면 그 색만 테마 대신 쓰입니다.")]
+        public AdvColorOverrides Palette
+        {
+            get { return _palette; }
         }
 
         /// <summary>펼치기 전 값 칸. 비우지 않으면 타입 이름이 그대로 나온다.</summary>

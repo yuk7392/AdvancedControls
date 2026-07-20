@@ -17,9 +17,14 @@ namespace AdvancedControls.Controls
     public abstract class AdvToggleBase : AdvControlBase
     {
         private bool _checked;
+        private bool _buttonStyle;
         private readonly AdvAnimator _checkAnim;
         private readonly AdvGlyphSettings _glyph = new AdvGlyphSettings();
         private AdvToggleOptions _options;
+
+        /// <summary>버튼형으로 그릴 때 글자 좌우·상하에 두는 안쪽 여백.</summary>
+        private const int ButtonPadX = 14;
+        private const int ButtonPadY = 5;
 
         [Category("Behavior")]
         [Description("체크 상태가 바뀔 때 발생합니다.")]
@@ -76,6 +81,39 @@ namespace AdvancedControls.Controls
             get { return true; }
         }
 
+        /// <summary>
+        /// 도형(체크 상자·원) 대신 눌리는 버튼 모양으로 그릴지 여부.
+        /// 켜짐이면 강조색으로 채운 버튼, 꺼짐이면 테두리만 있는 버튼으로 보인다.
+        /// Bootstrap의 버튼형 체크박스(btn-check)에 대응한다.
+        /// </summary>
+        [Category("Appearance")]
+        [DefaultValue(false)]
+        [Description("버튼처럼 그릴지 여부입니다. 켜면 도형 대신 눌리는 버튼 모양이 됩니다.")]
+        public bool ButtonStyle
+        {
+            get { return _buttonStyle; }
+            set
+            {
+                if (_buttonStyle == value) return;
+                _buttonStyle = value;
+                AdjustSize();
+                ReapplyMinimumSize();
+                Invalidate();
+            }
+        }
+
+        /// <summary>버튼형 렌더링을 지원하는지. 스위치처럼 도형이 핵심인 컨트롤은 끈다.</summary>
+        protected virtual bool SupportsButtonStyle
+        {
+            get { return true; }
+        }
+
+        /// <summary>실제로 버튼 모양으로 그릴지. 지원하지 않으면 켜도 무시한다.</summary>
+        protected bool RenderAsButton
+        {
+            get { return _buttonStyle && SupportsButtonStyle; }
+        }
+
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
         [Category(AdvCategory.Name)]
         [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
@@ -85,7 +123,7 @@ namespace AdvancedControls.Controls
             get { return _options ?? (_options = new AdvToggleOptions(this)); }
         }
 
-        /// <summary>도형 + 간격 + 글자에 글로우 여백을 더한 크기.</summary>
+        /// <summary>도형 + 간격 + 글자에 글로우 여백을 더한 크기. 버튼형은 버튼 크기로 잡는다.</summary>
         public override Size GetPreferredSize(Size proposedSize)
         {
             var text = string.IsNullOrEmpty(Text)
@@ -93,11 +131,32 @@ namespace AdvancedControls.Controls
                      : TextRenderer.MeasureText(Text, Font, new Size(int.MaxValue, int.MaxValue),
                                                 TextFormatFlags.NoPrefix);
 
+            if (RenderAsButton)
+            {
+                int edge = (FramePadding + EffectiveBorderWidth) * 2;
+                return new Size(text.Width + edge + ButtonPadX * 2,
+                                Math.Max(text.Height, Font.Height) + edge + ButtonPadY * 2);
+            }
+
             int pad = FramePadding * 2;
             int width = GlyphWidth + pad;
             if (!text.IsEmpty) width += GlyphGap + text.Width;
 
             return new Size(width, Math.Max(GlyphSize, text.Height) + pad);
+        }
+
+        /// <summary>
+        /// 버튼형은 글자가 눌리지 않을 최소 높이를 지킨다.
+        /// AutoSize가 꺼져 있어도 도형형보다 세로 여백이 커서 눌릴 수 있어 따로 잡는다.
+        /// </summary>
+        protected override Size MinimumContentSize
+        {
+            get
+            {
+                if (!RenderAsButton) return base.MinimumContentSize;
+                int edge = (FramePadding + EffectiveBorderWidth + ButtonPadY) * 2;
+                return new Size(0, edge + Font.Height);
+            }
         }
 
         [Category("Appearance")]
@@ -188,6 +247,13 @@ namespace AdvancedControls.Controls
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
+            if (RenderAsButton)
+            {
+                PaintButton(g, theme);
+                base.OnPaint(e);
+                return;
+            }
+
             Color fill, border, mark, text;
             ResolveColors(theme, out fill, out border, out mark, out text);
 
@@ -249,6 +315,68 @@ namespace AdvancedControls.Controls
             border = AdvGraphics.Blend(offBorder, onFill, t);
             mark = theme.OnAccent;
             text = theme.Text;
+        }
+
+        /// <summary>버튼형일 때: 버튼 프레임을 그리고 글자를 가운데 놓는다.</summary>
+        private void PaintButton(Graphics g, AdvTheme theme)
+        {
+            var bounds = FrameBounds;
+            if (bounds.Width <= 0 || bounds.Height <= 0) return;
+
+            int bw = EffectiveBorderWidth;
+
+            Color fill, fillEnd, border, fore;
+            ResolveButtonColors(theme, out fill, out fillEnd, out border, out fore);
+
+            AdvFrameRenderer.Draw(g, bounds, theme, EffectiveCorners, bw, fill, fillEnd, border,
+                                  CurrentGlow, CurrentElevation, EffectiveBorderDash);
+
+            if (string.IsNullOrEmpty(Text)) return;
+
+            var content = new Rectangle(
+                bounds.Left + bw + ButtonPadX,
+                bounds.Top + bw + ButtonPadY,
+                Math.Max(0, bounds.Width - bw * 2 - ButtonPadX * 2),
+                Math.Max(0, bounds.Height - bw * 2 - ButtonPadY * 2));
+
+            TextRenderer.DrawText(g, Text, Font, content, fore,
+                TextFormatFlags.HorizontalCenter
+              | TextFormatFlags.VerticalCenter
+              | TextFormatFlags.EndEllipsis
+              | TextFormatFlags.NoPrefix);
+        }
+
+        /// <summary>
+        /// 버튼형 색. 켜짐이면 강조색으로 채운 버튼, 꺼짐이면 테두리만 있는 버튼이다.
+        /// 체크 전환(CheckAmount)에 맞춰 두 상태 사이를 보간한다.
+        /// </summary>
+        private void ResolveButtonColors(AdvTheme theme, out Color fill, out Color fillEnd,
+                                         out Color border, out Color fore)
+        {
+            if (!Enabled)
+            {
+                fill = _checked ? theme.DisabledFill : theme.Surface;
+                fillEnd = Color.Empty;
+                border = theme.Border;
+                fore = theme.TextDisabled;
+                return;
+            }
+
+            float t = CheckAmount;
+            float h = HoverAmount;
+
+            Color offFill = IsPressed ? theme.SurfacePressed
+                          : AdvGraphics.Blend(theme.Surface, theme.SurfaceHover, h);
+            Color onFill = IsPressed ? theme.AccentPressed
+                         : AdvGraphics.Blend(theme.Accent, theme.AccentHover, h);
+
+            fill = AdvGraphics.Blend(offFill, onFill, t);
+            fillEnd = _checked ? theme.AccentGradientEnd : theme.SurfaceGradientEnd;
+
+            Color offBorder = AdvGraphics.Blend(theme.Border, theme.BorderHover, h);
+            border = AdvGraphics.Blend(offBorder, onFill, t);
+
+            fore = AdvGraphics.Blend(theme.Text, theme.OnAccent, t);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -317,7 +445,7 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvToggleBase _owner;
 
-        internal AdvToggleOptions(AdvToggleBase owner) : base(owner.Styling)
+        internal AdvToggleOptions(AdvToggleBase owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
         }

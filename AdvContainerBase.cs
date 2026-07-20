@@ -17,6 +17,10 @@ namespace AdvancedControls
     {
         private AdvTheme _theme;
         private readonly AdvAppearance _appearance = new AdvAppearance();
+        private AdvColorOverrides _colors;
+        private AdvTheme _mergedTheme;
+        private AdvTheme _mergedBase;
+        private bool _colorsDirty;
 
         protected AdvContainerBase()
         {
@@ -134,9 +138,49 @@ namespace AdvancedControls
             get { return _appearance; }
         }
 
+        /// <summary>
+        /// 이 컨테이너에만 적용하는 색 재정의. 비워 둔 색은 테마를 따른다.
+        /// 속성 창에서는 AdvancedControlOptions 안에서만 보인다.
+        /// </summary>
+        [Browsable(false)]
+        [Description("이 컨테이너에만 적용하는 색입니다. 비워 두면 테마 색을 따릅니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        public AdvColorOverrides Palette
+        {
+            get
+            {
+                if (_colors == null)
+                {
+                    _colors = new AdvColorOverrides();
+                    _colors.Changed += OnColorsChanged;
+                }
+                return _colors;
+            }
+        }
+
+        private void OnColorsChanged(object sender, EventArgs e)
+        {
+            _colorsDirty = true;
+            // 컨테이너 배경(BackColor)은 테마 면색에서 오므로 색을 바꾸면 함께 다시 맞춘다
+            OnThemeChanged();
+            Invalidate();
+        }
+
         protected AdvTheme EffectiveTheme
         {
-            get { return _theme ?? _appearance.ResolveTheme() ?? AdvThemeManager.Current; }
+            get
+            {
+                var baseTheme = _theme ?? _appearance.ResolveTheme() ?? AdvThemeManager.Current;
+                if (_colors == null || !_colors.HasAny) return baseTheme;
+
+                if (_colorsDirty || !ReferenceEquals(_mergedBase, baseTheme))
+                {
+                    _mergedTheme = _colors.Apply(baseTheme);
+                    _mergedBase = baseTheme;
+                    _colorsDirty = false;
+                }
+                return _mergedTheme;
+            }
         }
 
         /// <summary>테두리 선 모양(CSS border-style). 그리기 호출에 그대로 넘긴다.</summary>
@@ -237,6 +281,8 @@ namespace AdvancedControls
 
                 _appearance.Changed -= OnAppearanceChanged;
                 _appearance.LayoutChanged -= OnAppearanceLayoutChanged;
+
+                if (_colors != null) _colors.Changed -= OnColorsChanged;
             }
             base.Dispose(disposing);
         }

@@ -173,7 +173,7 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvGroupBox _owner;
 
-        internal AdvGroupBoxOptions(AdvGroupBox owner) : base(owner.Styling)
+        internal AdvGroupBoxOptions(AdvGroupBox owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
         }

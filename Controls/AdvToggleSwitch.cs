@@ -23,6 +23,22 @@ namespace AdvancedControls.Controls
             get { return GlyphSize * 9 / 5; }
         }
 
+        /// <summary>스위치는 트랙+손잡이 도형이 핵심이라 버튼형을 지원하지 않는다.</summary>
+        protected override bool SupportsButtonStyle
+        {
+            get { return false; }
+        }
+
+        /// <summary>지원하지 않으므로 속성 창에서도 감춰 헷갈리지 않게 한다.</summary>
+        [Browsable(false)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public new bool ButtonStyle
+        {
+            get { return false; }
+            set { }
+        }
+
         protected override void Toggle()
         {
             Checked = !Checked;

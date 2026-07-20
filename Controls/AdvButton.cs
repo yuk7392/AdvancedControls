@@ -434,7 +434,7 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvButton _owner;
 
-        internal AdvButtonOptions(AdvButton owner) : base(owner.Styling)
+        internal AdvButtonOptions(AdvButton owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
         }

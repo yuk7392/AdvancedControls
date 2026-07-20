@@ -42,7 +42,7 @@ namespace AdvancedControls.Controls
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public AdvOptions AdvancedControlOptions
         {
-            get { return _options ?? (_options = new AdvOptions(Styling)); }
+            get { return _options ?? (_options = new AdvOptions(Styling, Palette)); }
         }
 
         [Category("Behavior")]

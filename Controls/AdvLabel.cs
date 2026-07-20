@@ -223,7 +223,7 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvLabel _owner;
 
-        internal AdvLabelOptions(AdvLabel owner) : base(owner.Styling)
+        internal AdvLabelOptions(AdvLabel owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
         }

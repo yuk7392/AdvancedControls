@@ -19,6 +19,10 @@ namespace AdvancedControls
         private bool _pressed;
         private bool _useHandCursor = true;
         private readonly AdvAppearance _appearance = new AdvAppearance();
+        private AdvColorOverrides _colors;
+        private AdvTheme _mergedTheme;
+        private AdvTheme _mergedBase;
+        private bool _colorsDirty;
         private readonly AdvAnimator _hoverAnim;
         private readonly AdvAnimator _focusAnim;
 
@@ -154,6 +158,33 @@ namespace AdvancedControls
         }
 
         /// <summary>
+        /// 이 컨트롤에만 적용하는 색 재정의. 비워 둔 색은 테마를 따른다.
+        /// 여기서 지정한 색은 <see cref="EffectiveTheme"/>에 병합되어 그리기 전체에 반영된다.
+        /// 속성 창에서는 AdvancedControlOptions 안에서만 보인다.
+        /// </summary>
+        [Browsable(false)]
+        [Description("이 컨트롤에만 적용하는 색입니다. 비워 두면 테마 색을 따릅니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        public AdvColorOverrides Palette
+        {
+            get
+            {
+                if (_colors == null)
+                {
+                    _colors = new AdvColorOverrides();
+                    _colors.Changed += OnColorsChanged;
+                }
+                return _colors;
+            }
+        }
+
+        private void OnColorsChanged(object sender, EventArgs e)
+        {
+            _colorsDirty = true;
+            Invalidate();
+        }
+
+        /// <summary>
         /// Control.AutoSize는 기본적으로 속성 창에 나오지 않는다. 텍스트가 길면 잘리는
         /// 컨트롤들이라 여기서 다시 노출한다.
         /// </summary>
@@ -183,10 +214,26 @@ namespace AdvancedControls
             if (Size != preferred) Size = preferred;
         }
 
-        /// <summary>그리기에 실제로 적용되는 테마.</summary>
+        /// <summary>
+        /// 그리기에 실제로 적용되는 테마.
+        /// 컨트롤별 색 재정의(<see cref="Palette"/>)가 있으면 원본 테마에 덮어쓴 병합본을 돌려준다.
+        /// 병합본은 원본 테마가 바뀌거나 색이 바뀔 때만 다시 만들어 매 그리기마다 복사하지 않는다.
+        /// </summary>
         protected AdvTheme EffectiveTheme
         {
-            get { return _theme ?? _appearance.ResolveTheme() ?? AdvThemeManager.Current; }
+            get
+            {
+                var baseTheme = _theme ?? _appearance.ResolveTheme() ?? AdvThemeManager.Current;
+                if (_colors == null || !_colors.HasAny) return baseTheme;
+
+                if (_colorsDirty || !ReferenceEquals(_mergedBase, baseTheme))
+                {
+                    _mergedTheme = _colors.Apply(baseTheme);
+                    _mergedBase = baseTheme;
+                    _colorsDirty = false;
+                }
+                return _mergedTheme;
+            }
         }
 
         /// <summary>네 모서리를 모두 같은 값으로 맞추는 지름길. 디자이너에는 Appearance만 노출한다.</summary>
@@ -575,6 +622,8 @@ namespace AdvancedControls
 
                 _appearance.Changed -= OnAppearanceChanged;
                 _appearance.LayoutChanged -= OnAppearanceLayoutChanged;
+
+                if (_colors != null) _colors.Changed -= OnColorsChanged;
 
                 _hoverAnim.ValueChanged -= OnAnimationTick;
                 _focusAnim.ValueChanged -= OnAnimationTick;

@@ -964,7 +964,7 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvComboBox _owner;
 
-        internal AdvComboBoxOptions(AdvComboBox owner) : base(owner.Styling)
+        internal AdvComboBoxOptions(AdvComboBox owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
         }

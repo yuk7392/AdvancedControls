@@ -18,6 +18,10 @@ namespace AdvancedControls.Controls
     {
         private AdvTheme _theme;
         private readonly AdvAppearance _appearance = new AdvAppearance();
+        private AdvColorOverrides _colors;
+        private AdvTheme _mergedTheme;
+        private AdvTheme _mergedBase;
+        private bool _colorsDirty;
         private AdvTabControlOptions _options;
 
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
@@ -83,9 +87,49 @@ namespace AdvancedControls.Controls
             set { _appearance.ThemeMode = value; }
         }
 
+        /// <summary>
+        /// 이 탭 컨트롤에만 적용하는 색 재정의. 비워 둔 색은 테마를 따른다.
+        /// 탭 항목 색과 페이지 배경(Surface·Text·Accent 등)에 반영된다.
+        /// 속성 창에서는 AdvancedControlOptions 안에서만 보인다.
+        /// </summary>
+        [Browsable(false)]
+        [Description("이 탭 컨트롤에만 적용하는 색입니다. 비워 두면 테마 색을 따릅니다.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        public AdvColorOverrides Palette
+        {
+            get
+            {
+                if (_colors == null)
+                {
+                    _colors = new AdvColorOverrides();
+                    _colors.Changed += OnColorsChanged;
+                }
+                return _colors;
+            }
+        }
+
+        private void OnColorsChanged(object sender, EventArgs e)
+        {
+            _colorsDirty = true;
+            ApplyPageColors();
+            Invalidate();
+        }
+
         protected AdvTheme EffectiveTheme
         {
-            get { return _theme ?? _appearance.ResolveTheme() ?? AdvThemeManager.Current; }
+            get
+            {
+                var baseTheme = _theme ?? _appearance.ResolveTheme() ?? AdvThemeManager.Current;
+                if (_colors == null || !_colors.HasAny) return baseTheme;
+
+                if (_colorsDirty || !ReferenceEquals(_mergedBase, baseTheme))
+                {
+                    _mergedTheme = _colors.Apply(baseTheme);
+                    _mergedBase = baseTheme;
+                    _colorsDirty = false;
+                }
+                return _mergedTheme;
+            }
         }
 
         private void OnAppearanceChanged(object sender, EventArgs e)
@@ -282,6 +326,8 @@ namespace AdvancedControls.Controls
                 // 정적 이벤트라 해제하지 않으면 폼이 닫혀도 컨트롤이 수거되지 않는다
                 AdvThemeManager.ThemeChanged -= OnGlobalThemeChanged;
                 _appearance.Changed -= OnAppearanceChanged;
+
+                if (_colors != null) _colors.Changed -= OnColorsChanged;
             }
             base.Dispose(disposing);
         }
@@ -308,6 +354,13 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.ThemeMode; }
             set { _owner.ThemeMode = value; }
+        }
+
+        /// <summary>이 탭 컨트롤에만 적용하는 색. 비워 둔 색은 테마를 따른다.</summary>
+        [Description("이 탭 컨트롤에만 적용하는 색입니다. 펼쳐서 색을 지정하면 그 색만 테마 대신 쓰입니다.")]
+        public AdvColorOverrides Palette
+        {
+            get { return _owner.Palette; }
         }
 
         public override string ToString()

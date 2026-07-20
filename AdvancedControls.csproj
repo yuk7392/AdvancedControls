@@ -78,6 +78,7 @@
     </Compile>
     <Compile Include="Rendering\AdvFrameRenderer.cs" />
     <Compile Include="Rendering\AdvGraphics.cs" />
+    <Compile Include="Theming\AdvColorOverrides.cs" />
     <Compile Include="Theming\AdvCorners.cs" />
     <Compile Include="Theming\AdvShadow.cs" />
     <Compile Include="Theming\AdvTheme.cs" />

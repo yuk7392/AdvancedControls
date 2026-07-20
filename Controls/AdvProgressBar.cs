@@ -288,7 +288,7 @@ namespace AdvancedControls.Controls
     {
         private readonly AdvProgressBar _owner;
 
-        internal AdvProgressBarOptions(AdvProgressBar owner) : base(owner.Styling)
+        internal AdvProgressBarOptions(AdvProgressBar owner) : base(owner.Styling, owner.Palette)
         {
             _owner = owner;
         }
