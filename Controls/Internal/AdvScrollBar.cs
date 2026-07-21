@@ -174,6 +174,9 @@ namespace AdvancedControls.Controls.Internal
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            // 캡처가 풀린 뒤 버튼을 안 눌러도 스쳐서 썸이 이동하는 것을 막는다
+            if (_dragging && (e.Button & MouseButtons.Left) == 0) _dragging = false;
+
             if (_dragging)
             {
                 var thumb = ThumbBounds;
@@ -206,6 +209,13 @@ namespace AdvancedControls.Controls.Internal
                 Invalidate();
             }
             base.OnMouseUp(e);
+        }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            // 드래그 중 캡처가 강제로 풀리면(모달·Alt+Tab·Enabled=false 등) 드래그 상태를 확실히 내린다
+            if (_dragging) { _dragging = false; Invalidate(); }
+            base.OnMouseCaptureChanged(e);
         }
 
         protected override void OnMouseLeave(EventArgs e)

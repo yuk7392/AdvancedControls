@@ -21,6 +21,7 @@ namespace AdvancedControls.Controls
         public bool IsSeparator { get; internal set; }
 
         internal Rectangle Rect;
+        internal int TextW;   // LayoutItems가 한 번 측정해 저장(그리기 루프가 재사용)
 
         /// <summary>버튼을 누르면 발생한다. 토글이면 Checked가 먼저 뒤집힌다.</summary>
         public event EventHandler Click;
@@ -133,10 +134,11 @@ namespace AdvancedControls.Controls
             foreach (var it in _items)
             {
                 int w;
-                if (it.IsSeparator) w = SepWidth;
+                if (it.IsSeparator) { it.TextW = 0; w = SepWidth; }
                 else
                 {
                     int tw = string.IsNullOrEmpty(it.Text) ? 0 : TextRenderer.MeasureText(g, it.Text, Font).Width;
+                    it.TextW = tw;   // 그리기 루프가 재사용(매 페인트 재측정 방지)
                     int iw = it.Image != null ? IconSize : 0;
                     int mid = iw + (iw > 0 && tw > 0 ? Gap : 0) + tw;
                     w = PadX * 2 + mid;
@@ -236,7 +238,7 @@ namespace AdvancedControls.Controls
                 Color fg = !it.Enabled ? theme.TextDisabled : active ? theme.OnAccent : theme.Text;
 
                 int iw = it.Image != null ? IconSize : 0;
-                int tw = string.IsNullOrEmpty(it.Text) ? 0 : TextRenderer.MeasureText(g, it.Text, Font).Width;
+                int tw = it.TextW;   // LayoutItems에서 이미 측정
                 int mid = iw + (iw > 0 && tw > 0 ? Gap : 0) + tw;
                 int startX = it.Rect.Left + (it.Rect.Width - mid) / 2;
 

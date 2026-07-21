@@ -265,6 +265,17 @@ namespace AdvancedControls.Controls
 
             DrawGlyph(g, glyph, theme, fill, border, mark);
 
+            // 키보드 포커스: 작은 도형에선 글로우가 잘 안 보이므로 도형에 딱 맞는 선명한 링을 함께 그린다
+            float fa = FocusAmount;
+            if (Enabled && ShowFocusCues && fa > 0.01f)
+            {
+                var rc = GlyphCorners(theme);
+                var ring = Rectangle.Inflate(glyph, 2, 2);
+                using (var path = AdvGraphics.CreateRoundedRect(ring, new AdvCorners(rc.TopLeft + 2)))
+                using (var pen = new Pen(Color.FromArgb((int)(255 * fa), theme.FocusRing), 1.5f))
+                    g.DrawPath(pen, path);
+            }
+
             if (!string.IsNullOrEmpty(Text))
             {
                 // 도형이 오른쪽에 있으면 글자는 반대쪽 끝에 붙어야 사이 간격이 유지된다

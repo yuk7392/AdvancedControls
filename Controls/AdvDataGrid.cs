@@ -532,6 +532,16 @@ namespace AdvancedControls.Controls
             g.Restore(state);
         }
 
+        private Font _headerFont;   // 볼드 머리글 폰트 캐시
+        private Font HeaderFont { get { return _headerFont ?? (_headerFont = new Font(Font, FontStyle.Bold)); } }
+
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            if (_headerFont != null) { _headerFont.Dispose(); _headerFont = null; }
+            Invalidate();
+        }
+
         private void DrawHeader(Graphics g, AdvTheme theme)
         {
             using (var b = new SolidBrush(theme.SurfaceHover))
@@ -540,7 +550,7 @@ namespace AdvancedControls.Controls
             var state = g.Save();
             g.SetClip(_headerRect);
 
-            using (var headerFont = new Font(Font, FontStyle.Bold))
+            var headerFont = HeaderFont;   // 매 페인트 new Font 대신 캐시(폰트 변경 시에만 재생성)
             using (var pen = new Pen(theme.Border))
             {
                 int cx = _headerRect.Left - _scrollX;
@@ -676,6 +686,10 @@ namespace AdvancedControls.Controls
         {
             base.OnMouseMove(e);
 
+            // 캡처가 풀린 뒤 버튼을 안 눌러도 스쳐서 썸/열폭이 이동하는 것을 막는다
+            if ((_dragThumb != 0 || _resizeCol >= 0) && (e.Button & MouseButtons.Left) == 0)
+            { _dragThumb = 0; _resizeCol = -1; }
+
             if (_dragThumb == 1) { DragThumb(e.Y, true); return; }
             if (_dragThumb == 2) { DragThumb(e.X, false); return; }
             if (_resizeCol >= 0)
@@ -710,6 +724,13 @@ namespace AdvancedControls.Controls
                 var h = ColumnWidthChanged;
                 if (h != null && col < _columns.Count) h(this, new AdvGridColumnEventArgs(col, _columns[col]));
             }
+        }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            base.OnMouseCaptureChanged(e);
+            // 드래그 중 캡처가 강제로 풀리면(모달·Alt+Tab 등) 썸·열폭 드래그 상태를 내린다
+            if (_dragThumb != 0 || _resizeCol >= 0) { _dragThumb = 0; _resizeCol = -1; Invalidate(); }
         }
 
         protected override void OnMouseDoubleClick(MouseEventArgs e)
@@ -973,7 +994,11 @@ namespace AdvancedControls.Controls
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && Region != null) Region.Dispose();
+            if (disposing)
+            {
+                if (Region != null) Region.Dispose();
+                if (_headerFont != null) _headerFont.Dispose();
+            }
             base.Dispose(disposing);
         }
     }

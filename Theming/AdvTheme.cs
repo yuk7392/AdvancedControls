@@ -132,7 +132,7 @@ namespace AdvancedControls.Theming
                 BorderWidth = 1,
                 GradientAngle = 90f,
                 TransitionDuration = 120,
-                FocusGlow = new AdvShadow(Color.FromArgb(120, ColorTranslator.FromHtml("#2563EB")), 3, 0, 0),
+                FocusGlow = new AdvShadow(Color.FromArgb(200, ColorTranslator.FromHtml("#2563EB")), 3, 0, 0),
                 Elevation = new AdvShadow(Color.FromArgb(60, 0, 0, 0), 5, 0, 2)
             };
         }
@@ -168,7 +168,7 @@ namespace AdvancedControls.Theming
                 BorderWidth = 1,
                 GradientAngle = 90f,
                 TransitionDuration = 120,
-                FocusGlow = new AdvShadow(Color.FromArgb(140, ColorTranslator.FromHtml("#3B82F6")), 3, 0, 0),
+                FocusGlow = new AdvShadow(Color.FromArgb(210, ColorTranslator.FromHtml("#3B82F6")), 3, 0, 0),
                 Elevation = new AdvShadow(Color.FromArgb(110, 0, 0, 0), 6, 0, 2)
             };
         }

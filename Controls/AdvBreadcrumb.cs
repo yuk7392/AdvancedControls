@@ -36,6 +36,7 @@ namespace AdvancedControls.Controls
         private string _separator = " / ";
         private int _hover = -1;
         private int _focusLink = -1;
+        private int _sepWidth;      // 구분자 폭 캐시(RebuildLayout에서 1회 측정)
         private AdvBreadcrumbOptions _options;
 
         public event EventHandler<AdvBreadcrumbClickedEventArgs> ItemClicked;
@@ -110,6 +111,9 @@ namespace AdvancedControls.Controls
             var frame = FrameBounds;
             if (frame.Width <= 0 || frame.Height <= 0) return;
 
+            _sepWidth = TextRenderer.MeasureText(_separator, Font, new Size(int.MaxValue, int.MaxValue),
+                                                 TextFormatFlags.NoPrefix).Width;
+
             int x = frame.Left;
             for (int i = 0; i < _items.Count; i++)
             {
@@ -118,12 +122,7 @@ namespace AdvancedControls.Controls
                 _itemRects.Add(new Rectangle(x, frame.Top, size.Width, frame.Height));
                 x += size.Width;
 
-                if (i < _items.Count - 1)
-                {
-                    var sep = TextRenderer.MeasureText(_separator, Font, new Size(int.MaxValue, int.MaxValue),
-                                                       TextFormatFlags.NoPrefix);
-                    x += sep.Width;
-                }
+                if (i < _items.Count - 1) x += _sepWidth;   // 구분자 폭은 캐시값 재사용
             }
         }
 
@@ -148,21 +147,17 @@ namespace AdvancedControls.Controls
 
                 TextRenderer.DrawText(g, _items[i], Font, rect, color, flags);
 
-                // 호버된 링크에는 밑줄을 긋는다.
+                // 호버된 링크에는 밑줄을 긋는다.(폭은 항목 rect, 높이는 폰트 줄높이 — 매 페인트 재측정 제거)
                 if (Enabled && !isLast && i == _hover)
                 {
-                    var size = TextRenderer.MeasureText(_items[i], Font, new Size(int.MaxValue, int.MaxValue),
-                                                        TextFormatFlags.NoPrefix);
-                    int by = rect.Top + (rect.Height + size.Height) / 2 - 1;
+                    int by = rect.Top + (rect.Height + Font.Height) / 2 - 1;
                     using (var pen = new Pen(color, 1f))
-                        g.DrawLine(pen, rect.Left, by, rect.Left + size.Width, by);
+                        g.DrawLine(pen, rect.Left, by, rect.Left + rect.Width, by);
                 }
 
                 if (!isLast)
                 {
-                    var sepRect = new Rectangle(rect.Right, rect.Top,
-                        TextRenderer.MeasureText(_separator, Font, new Size(int.MaxValue, int.MaxValue),
-                                                 TextFormatFlags.NoPrefix).Width, rect.Height);
+                    var sepRect = new Rectangle(rect.Right, rect.Top, _sepWidth, rect.Height);   // 캐시된 구분자 폭
                     TextRenderer.DrawText(g, _separator, Font, sepRect, theme.TextMuted, flags);
                 }
             }

@@ -456,18 +456,8 @@ namespace AdvancedControls.Controls
             AdvFrameRenderer.Draw(g, bounds, theme, corners, bw, fill, fillEnd, border,
                                   CurrentGlow, CurrentElevation, EffectiveBorderDash, EffectiveGradientAngle);
 
-            // 기본 버튼(Enter로 눌리는 버튼)은 테두리를 한 겹 더 그려 구분한다
-            if (_isDefault && Enabled)
-            {
-                var ring = Rectangle.Inflate(bounds, -(bw + 1), -(bw + 1));
-                if (ring.Width > 0 && ring.Height > 0)
-                {
-                    var ctxPal = AdvContextPalette.Resolve(_context, theme);
-                    using (var path = AdvGraphics.CreateRoundedRect(ring, corners.Clamp(0, int.MaxValue)))
-                    using (var pen = new Pen(_kind == AdvButtonKind.Filled ? ctxPal.OnSolid : ctxPal.Solid, 1))
-                        g.DrawPath(pen, path);
-                }
-            }
+            // 기본 버튼은 별도 링을 그리지 않는다 — 포커스 표시는 글로우로 일원화한다.
+            // (예전 인셋 링은 포커스 시 자동으로 임시 기본버튼이 되며 흰색 링 아티팩트를 만들었다.)
 
             // 분할 드롭다운: 오른쪽 화살표 영역을 떼어 내고 구분선과 셰브런을 그린다
             int rightInset = 0;

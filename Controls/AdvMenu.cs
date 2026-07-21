@@ -338,6 +338,7 @@ namespace AdvancedControls.Controls
         private int _open = -1;
         private int _justClosedIndex = -1;   // 방금 닫힌 메뉴(타이틀 재클릭 토글 처리용)
         private int _justClosedAt;
+        private bool _titlesDirty = true;    // 타이틀 추가·폰트·크기 변경 시에만 레이아웃 재계산
 
         private const int ItemPadX = 14;
 
@@ -365,12 +366,26 @@ namespace AdvancedControls.Controls
         {
             var menu = new AdvContextMenu();
             _menus.Add(new TopMenu { Title = title, Menu = menu });
+            _titlesDirty = true;
             Invalidate();
             return menu;
         }
 
         [Browsable(false)]
         public int MenuCount { get { return _menus.Count; } }
+
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            _titlesDirty = true;   // 폰트가 바뀌면 타이틀 폭 재측정
+            Invalidate();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            _titlesDirty = true;   // 높이가 바뀌면 타이틀 사각형 높이 재계산
+        }
 
         private void LayoutTitles(Graphics g)
         {
@@ -392,7 +407,7 @@ namespace AdvancedControls.Controls
             using (var pen = new Pen(theme.Border))
                 g.DrawLine(pen, 0, Height - 1, Width, Height - 1);
 
-            LayoutTitles(g);
+            if (_titlesDirty) { LayoutTitles(g); _titlesDirty = false; }   // 매 페인트 재측정 방지
             for (int i = 0; i < _menus.Count; i++)
             {
                 var m = _menus[i];

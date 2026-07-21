@@ -237,11 +237,15 @@ namespace AdvancedControls.Controls
 
         // ── 둥근 모서리 클립 ─────────────────────────────────────────
 
+        private Rectangle _regionClip = Rectangle.Empty;   // 마지막 Region 클립(동일 크기 중복 재생성 방지)
+
         private void ApplyRoundedRegion()
         {
             if (!IsHandleCreated) return;
-            var old = Region;
             var clip = Rectangle.Inflate(FrameBounds, 1, 1);
+            if (Region != null && clip == _regionClip) return;   // 크기·위치가 그대로면 다시 만들지 않는다
+            _regionClip = clip;
+            var old = Region;
             using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
                 Region = new Region(path);
             if (old != null) old.Dispose();
@@ -249,7 +253,12 @@ namespace AdvancedControls.Controls
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyRoundedRegion(); }
         protected override void OnResize(EventArgs e) { base.OnResize(e); ApplyRoundedRegion(); }
-        protected override void OnThemeChanged() { base.OnThemeChanged(); ApplyRoundedRegion(); }
+        protected override void OnThemeChanged()
+        {
+            base.OnThemeChanged();
+            _regionClip = Rectangle.Empty;   // 반경·테마가 바뀌면 크기가 같아도 모서리가 달라지므로 강제 재생성
+            ApplyRoundedRegion();
+        }
 
         // ── 그리기 ────────────────────────────────────────────────────
 
@@ -381,6 +390,8 @@ namespace AdvancedControls.Controls
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            // 캡처가 풀린 뒤 버튼을 안 눌러도 스쳐서 이동하는 것을 막는다
+            if (_dragThumb && (e.Button & MouseButtons.Left) == 0) _dragThumb = false;
             if (_dragThumb) { DragThumb(e.Y); return; }
 
             bool vHot = _vBar && ThumbRect().Contains(e.Location);
@@ -392,6 +403,13 @@ namespace AdvancedControls.Controls
         }
 
         protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); _dragThumb = false; }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            base.OnMouseCaptureChanged(e);
+            // 드래그 중 캡처가 강제로 풀리면(모달·Alt+Tab 등) 썸 드래그 상태를 내린다
+            if (_dragThumb) { _dragThumb = false; Invalidate(); }
+        }
 
         protected override void OnMouseLeave(EventArgs e)
         {
