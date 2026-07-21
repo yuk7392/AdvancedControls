@@ -57,6 +57,12 @@
     <Compile Include="Controls\AdvComboBox.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\AdvDataGrid.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvTreeView.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="Controls\Internal\AdvComboPopup.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -111,6 +117,21 @@
     </Compile>
     <Compile Include="Controls\AdvListBox.cs">
       <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvMenu.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvToolBar.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvStatusBar.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvSplitContainer.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvDialog.cs">
+      <SubType>Form</SubType>
     </Compile>
     <Compile Include="Controls\AdvDateTimePicker.cs">
       <SubType>Component</SubType>

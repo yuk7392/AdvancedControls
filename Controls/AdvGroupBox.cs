@@ -63,19 +63,51 @@ namespace AdvancedControls.Controls
             get { return _header.ResolveHeight(Font, !string.IsNullOrEmpty(Text)); }
         }
 
+        /// <summary>머리글이 프레임 밖(캡션)에 있고, 실제로 표시할 제목이 있는지.</summary>
+        private bool HeaderOutside
+        {
+            get { return _header.Placement == AdvHeaderPlacement.Outside && HeaderHeight > 0; }
+        }
+
         /// <summary>
-        /// 자식 컨트롤이 놓이는 영역. 제목 높이를 뺀 아래쪽이다.
+        /// 테두리 상자를 실제로 그릴 영역. Outside 머리글이면 그 높이만큼 위를 비워
+        /// 상자가 캡션 아래에서 시작하게 한다. Inside면 프레임 전체다.
+        /// </summary>
+        private Rectangle GroupFrameBounds
+        {
+            get
+            {
+                var f = FrameBounds;
+                if (HeaderOutside)
+                    return new Rectangle(f.Left, f.Top + HeaderHeight, f.Width,
+                                         Math.Max(1, f.Height - HeaderHeight));
+                return f;
+            }
+        }
+
+        /// <summary>
+        /// 자식 컨트롤이 놓이는 영역. Inside면 제목 높이를 뺀 아래쪽, Outside면 상자 안쪽 전체다.
         /// Dock/Anchor가 이 값을 기준으로 계산되므로 반드시 재정의해야 한다.
         /// </summary>
         public override Rectangle DisplayRectangle
         {
             get
             {
-                var frame = FrameBounds;
+                var frame = GroupFrameBounds;
                 int bw = EffectiveBorderWidth;
 
-                // 구분선을 그리면 그 두께만큼 더 내려야 자식이 선 위에 겹치지 않는다
-                int top = frame.Top + bw + HeaderHeight + (_header.ShowSeparator ? bw : 0);
+                int top;
+                if (HeaderOutside)
+                {
+                    // 머리글이 상자 밖이므로 상자 안쪽 전체가 내용 영역
+                    top = frame.Top + bw;
+                }
+                else
+                {
+                    int header = HeaderHeight;
+                    // 구분선을 그리면 그 두께만큼 더 내려야 자식이 선 위에 겹치지 않는다
+                    top = frame.Top + bw + header + (header > 0 && _header.ShowSeparator ? bw : 0);
+                }
 
                 return new Rectangle(
                     frame.Left + bw + Padding.Left,
@@ -91,37 +123,66 @@ namespace AdvancedControls.Controls
         {
             var theme = EffectiveTheme;
             var g = e.Graphics;
-            var bounds = FrameBounds;
+            var frame = GroupFrameBounds;
 
-            if (bounds.Width <= 0 || bounds.Height <= 0) return;
+            if (frame.Width <= 0 || frame.Height <= 0) return;
 
-            AdvFrameRenderer.Draw(g, bounds, theme, EffectiveCorners, EffectiveBorderWidth,
+            AdvFrameRenderer.Draw(g, frame, theme, EffectiveCorners, EffectiveBorderWidth,
                                   theme.Surface, theme.SurfaceGradientEnd, theme.Border,
                                   null, CurrentElevation, EffectiveBorderDash);
 
-            int bw = EffectiveBorderWidth;
             int header = HeaderHeight;
             if (header <= 0) { base.OnPaint(e); return; }
 
+            DrawHeader(g, theme, header);
+
+            base.OnPaint(e);
+        }
+
+        /// <summary>
+        /// 제목 밴드·글자·구분선을 그린다. 배치(Inside/Outside)와 모양(Plain/Filled)에 따라
+        /// 밴드 위치와 배경 유무가 달라진다.
+        /// </summary>
+        private void DrawHeader(Graphics g, AdvTheme theme, int header)
+        {
+            int bw = EffectiveBorderWidth;
+            var full = FrameBounds;
+            bool outside = HeaderOutside;
+
+            // 제목이 놓이는 밴드. Outside면 상자 위 캡션 자리, Inside면 상자 안쪽 최상단.
+            Rectangle band = outside
+                ? new Rectangle(full.Left, full.Top, full.Width, header)
+                : new Rectangle(full.Left + bw, full.Top + bw,
+                                Math.Max(0, full.Width - bw * 2), header);
+
+            if (_header.Style == AdvHeaderStyle.Filled)
+            {
+                // 위쪽 두 모서리만 상단 반경에 맞춰 둥글게, 아래는 직각으로 상자와 잇는다
+                var c = EffectiveCorners;
+                var bandCorners = new AdvCorners(c.TopLeft, c.TopRight, 0, 0);
+                using (var path = AdvGraphics.CreateRoundedRect(band, bandCorners))
+                using (var b = new SolidBrush(_header.ResolveFillColor(theme)))
+                    g.FillPath(b, path);
+            }
+
             var pad = _header.Padding;
             var titleRect = new Rectangle(
-                bounds.Left + bw + pad.Left,
-                bounds.Top + bw + pad.Top,
-                Math.Max(0, bounds.Width - bw * 2 - pad.Horizontal),
-                Math.Max(0, header - pad.Vertical));
+                band.Left + pad.Left,
+                band.Top + pad.Top,
+                Math.Max(0, band.Width - pad.Horizontal),
+                Math.Max(0, band.Height - pad.Vertical));
 
             TextRenderer.DrawText(g, Text, _header.ResolveFont(Font), titleRect,
                                   _header.ResolveForeColor(theme, Enabled),
                                   _header.ToTextFlags());
 
-            if (_header.ShowSeparator)
+            // 구분선은 Inside에서만. Outside는 상자 상단 테두리가 이미 캡션과 내용을 가른다.
+            if (_header.ShowSeparator && !outside)
             {
-                int y = bounds.Top + bw + header;
+                int y = full.Top + bw + header;
                 using (var pen = new Pen(theme.Border, bw))
-                    g.DrawLine(pen, bounds.Left + bw, y, bounds.Right - bw, y);
+                    g.DrawLine(pen, full.Left + bw, y, full.Right - bw, y);
             }
-
-            base.OnPaint(e);
         }
 
         private void HeaderChanged(object sender, EventArgs e)

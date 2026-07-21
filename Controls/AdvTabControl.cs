@@ -313,25 +313,17 @@ namespace AdvancedControls.Controls
             using (var b = new SolidBrush(stripBg))
                 g.FillRectangle(b, Rectangle.FromLTRB(client.Left, client.Top, client.Right, stripBottom));
 
-            // 2) 페이지 둘레 테두리. 탭 장식보다 먼저 그려, Card 선택 탭이 자기 아래 구간을 덮어 열 수 있게 한다
-            using (var brush = new SolidBrush(theme.Border))
-            {
-                if (page.Left > client.Left)
-                    g.FillRectangle(brush, Rectangle.FromLTRB(client.Left, stripBottom, page.Left, client.Bottom));
-                if (client.Right > page.Right)
-                    g.FillRectangle(brush, Rectangle.FromLTRB(page.Right, stripBottom, client.Right, client.Bottom));
-                if (client.Bottom > page.Bottom)
-                    g.FillRectangle(brush, Rectangle.FromLTRB(client.Left, page.Bottom, client.Right, client.Bottom));
-                if (page.Top > stripBottom)
-                    g.FillRectangle(brush, Rectangle.FromLTRB(client.Left, stripBottom, client.Right, page.Top));
-            }
+            // 2) 탭 줄 아래(Win32가 그린 굵은 3D 테두리 자리 포함)를 페이지 색으로 덮은 뒤
+            //    1px 테두리만 두른다. 라이브러리 다른 컨트롤과 굵기를 맞추고, 페이지에 든
+            //    자식 컨트롤의 테두리와 이중선이 되지 않게 한다. Card 선택 탭은 아래 step 3에서
+            //    자기 구간의 윗변을 다시 덮어 페이지와 연결한다.
+            using (var fill = new SolidBrush(theme.Surface))
+                g.FillRectangle(fill, Rectangle.FromLTRB(client.Left, stripBottom, client.Right, client.Bottom));
 
-            // 3) Underline·Card는 줄 아래 구분선을 깐다(선택 장식이 그 위를 덮는다)
-            if (_tabStyle != AdvTabStyle.Segmented)
-                using (var pen = new Pen(theme.Border))
-                    g.DrawLine(pen, client.Left, stripBottom - 1, client.Right, stripBottom - 1);
+            using (var pen = new Pen(theme.Border))
+                g.DrawRectangle(pen, client.Left, stripBottom - 1, client.Width - 1, client.Bottom - stripBottom);
 
-            // 4) 탭마다 스타일 장식 + 글자
+            // 3) 탭마다 스타일 장식 + 글자
             for (int i = 0; i < TabCount; i++)
             {
                 var tab = GetTabRect(i);

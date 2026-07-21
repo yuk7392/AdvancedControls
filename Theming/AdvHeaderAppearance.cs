@@ -5,6 +5,24 @@ using System.Windows.Forms;
 
 namespace AdvancedControls.Theming
 {
+    /// <summary>머리글을 프레임 상자 안에 둘지(Inside), 상자 위 캡션으로 둘지(Outside).</summary>
+    public enum AdvHeaderPlacement
+    {
+        /// <summary>프레임이 머리글과 내용을 함께 감싼다.</summary>
+        Inside,
+        /// <summary>머리글이 프레임 상자 위에 캡션처럼 뜨고, 상자는 내용만 감싼다.</summary>
+        Outside
+    }
+
+    /// <summary>머리글 모양.</summary>
+    public enum AdvHeaderStyle
+    {
+        /// <summary>글자만(과 선택적 구분선).</summary>
+        Plain,
+        /// <summary>배경을 채운 밴드 위에 글자.</summary>
+        Filled
+    }
+
     /// <summary>
     /// 머리글(제목 줄)의 모양과 배치를 한데 묶는다.
     /// 제목 글자 자체는 컨트롤의 Text에 그대로 둔다 — 다들 거기서 찾기 때문이다.
@@ -18,6 +36,9 @@ namespace AdvancedControls.Theming
         private int _height = -1;
         private bool _showSeparator = true;
         private Padding _padding = new Padding(12, 8, 12, 8);
+        private AdvHeaderPlacement _placement = AdvHeaderPlacement.Inside;
+        private AdvHeaderStyle _style = AdvHeaderStyle.Plain;
+        private Color _fillColor = Color.Empty;
 
         /// <summary>다시 그리기만 필요할 때.</summary>
         internal event EventHandler Changed;
@@ -102,6 +123,47 @@ namespace AdvancedControls.Theming
             }
         }
 
+        [DefaultValue(AdvHeaderPlacement.Inside)]
+        [Description("머리글을 프레임 안(Inside)에 둘지, 프레임 위 캡션(Outside)으로 둘지입니다.")]
+        public AdvHeaderPlacement Placement
+        {
+            get { return _placement; }
+            set
+            {
+                if (_placement == value) return;
+                _placement = value;
+                RaiseLayout();      // 내용 영역과 프레임 위치가 함께 달라진다
+            }
+        }
+
+        [DefaultValue(AdvHeaderStyle.Plain)]
+        [Description("머리글 모양입니다. Plain=글자만, Filled=배경을 채운 밴드.")]
+        public AdvHeaderStyle Style
+        {
+            get { return _style; }
+            set
+            {
+                if (_style == value) return;
+                _style = value;
+                RaiseChanged();
+            }
+        }
+
+        [Description("Filled 머리글의 배경색입니다. 비우면 테마 색을 따릅니다.")]
+        public Color FillColor
+        {
+            get { return _fillColor; }
+            set
+            {
+                if (_fillColor == value) return;
+                _fillColor = value;
+                RaiseChanged();
+            }
+        }
+
+        public bool ShouldSerializeFillColor() { return _fillColor != Color.Empty; }
+        public void ResetFillColor() { FillColor = Color.Empty; }
+
         public bool ShouldSerializeForeColor() { return _foreColor != Color.Empty; }
         public void ResetForeColor() { ForeColor = Color.Empty; }
 
@@ -118,6 +180,12 @@ namespace AdvancedControls.Theming
         {
             if (!enabled) return theme.TextDisabled;
             return _foreColor == Color.Empty ? theme.Text : _foreColor;
+        }
+
+        /// <summary>Filled 머리글 배경색. 지정이 없으면 테마의 살짝 눌린 면색을 쓴다.</summary>
+        public Color ResolveFillColor(AdvTheme theme)
+        {
+            return _fillColor == Color.Empty ? theme.SurfaceHover : _fillColor;
         }
 
         /// <summary>제목이 비어 있으면 머리글 자리를 아예 잡지 않는다.</summary>
