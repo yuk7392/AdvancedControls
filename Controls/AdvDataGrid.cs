@@ -39,6 +39,9 @@ namespace AdvancedControls.Controls
         public HorizontalAlignment Alignment { get; set; }
         public bool Sortable { get; set; }
 
+        /// <summary>선택 체크박스 열이면 true. 텍스트 대신 체크박스를 그리고 클릭하면 행 선택을 토글한다.</summary>
+        internal bool IsCheckBox { get; set; }
+
         public AdvGridColumn(string header, int width, HorizontalAlignment alignment)
         {
             Header = header;
@@ -62,6 +65,24 @@ namespace AdvancedControls.Controls
         public int RowIndex { get; private set; }
         public int ColumnIndex { get; private set; }
         public AdvGridCellEventArgs(int row, int col) { RowIndex = row; ColumnIndex = col; }
+    }
+
+    /// <summary>
+    /// 셀을 그리기 직전에 값에 따라 배경·글자색·폰트·표시 텍스트를 지정할 수 있게 하는 인자.
+    /// 한 행 전체를 칠하려면 <see cref="ColumnIndex"/>와 무관하게 매 셀에서 같은 색을 지정한다.
+    /// (성능을 위해 그리드가 인스턴스를 재사용하므로 핸들러 밖으로 참조를 보관하지 말 것.)
+    /// </summary>
+    public class AdvGridCellFormattingEventArgs : EventArgs
+    {
+        public int RowIndex { get; internal set; }
+        public int ColumnIndex { get; internal set; }
+        public bool Selected { get; internal set; }
+        /// <summary>표시할 텍스트. 바꾸면 원본 데이터는 그대로 두고 화면 표시만 바뀐다(정렬·자동맞춤은 원본 사용).</summary>
+        public string Value { get; set; }
+        public Color BackColor { get; set; }
+        public Color ForeColor { get; set; }
+        /// <summary>null이면 그리드 기본 Font.</summary>
+        public Font Font { get; set; }
     }
 
     /// <summary>
@@ -89,6 +110,8 @@ namespace AdvancedControls.Controls
         private const int ScrollSize = 11;          // 스크롤바 두께
         private const int ResizeGrip = 4;           // 열 경계 잡는 폭
         private const int MinThumb = 24;
+        private const int HScrollStep = 48;         // 가로 방향키/Shift+휠 한 번의 이동 폭
+        private const int CellPadX = 8;             // 셀 좌우 안쪽 여백(텍스트·자동맞춤 공통)
 
         private int _scrollX, _scrollY;
         private int _hoverRow = -1;
@@ -107,6 +130,11 @@ namespace AdvancedControls.Controls
         private int _dragThumb;                     // 0=없음, 1=세로, 2=가로
         private int _dragThumbOffset;
         private bool _vHot, _hHot;                  // 스크롤바 호버
+
+        // 인라인 편집
+        private bool _readOnly = true;
+        private TextBox _editor;
+        private int _editRow = -1, _editCol = -1;
 
         // 매 그리기 직전에 계산되는 레이아웃 값
         private bool _vBar, _hBar;
@@ -133,6 +161,19 @@ namespace AdvancedControls.Controls
         [Category("Behavior")]
         [Description("셀을 더블클릭하면 발생합니다.")]
         public event EventHandler<AdvGridCellEventArgs> CellDoubleClick;
+
+        /// <summary>셀을 그리기 직전에 발생한다. 값에 따라 배경·글자색·폰트·표시값을 조정할 수 있다.</summary>
+        [Category("Behavior")]
+        [Description("셀을 그리기 직전에 발생합니다. 조건부 서식에 사용합니다.")]
+        public event EventHandler<AdvGridCellFormattingEventArgs> CellFormatting;
+
+        /// <summary>인라인 편집으로 셀 값이 바뀌면 발생한다.</summary>
+        [Category("Behavior")]
+        [Description("인라인 편집으로 셀 값이 바뀌면 발생합니다.")]
+        public event EventHandler<AdvGridCellEventArgs> CellValueChanged;
+
+        // 셀당 새로 만들지 않고 재사용(구독 시 매 페인트·매 셀 호출되므로 할당 억제)
+        private readonly AdvGridCellFormattingEventArgs _fmtArgs = new AdvGridCellFormattingEventArgs();
 
         public AdvDataGrid()
         {
@@ -166,6 +207,15 @@ namespace AdvancedControls.Controls
                 if (value == AdvGridSelectionMode.Single && KeepSingleSelection()) RaiseSelectionChanged();
                 Invalidate();
             }
+        }
+
+        [Browsable(false)]
+        [DefaultValue(true)]
+        [Description("읽기 전용 여부입니다. false면 더블클릭·F2로 셀을 인라인 편집할 수 있습니다.")]
+        public bool ReadOnly
+        {
+            get { return _readOnly; }
+            set { if (_readOnly == value) return; _readOnly = value; if (value) CancelEdit(); }
         }
 
         [Browsable(false)]
@@ -232,6 +282,17 @@ namespace AdvancedControls.Controls
             return AddColumn(header, width, HorizontalAlignment.Left);
         }
 
+        /// <summary>선택 체크박스 열을 추가한다. 셀 체크박스는 행 선택 상태를 반영하고, 머리글은 전체선택 토글이다.</summary>
+        public AdvGridColumn AddCheckBoxColumn(int width)
+        {
+            var col = new AdvGridColumn(string.Empty, width, HorizontalAlignment.Center) { Sortable = false, IsCheckBox = true };
+            _columns.Add(col);
+            Invalidate();
+            return col;
+        }
+
+        public AdvGridColumn AddCheckBoxColumn() { return AddCheckBoxColumn(34); }
+
         /// <summary>행을 추가한다. 셀 개수가 열 수와 달라도 남거나 빈 칸으로 처리한다.</summary>
         public void AddRow(params string[] cells)
         {
@@ -254,13 +315,27 @@ namespace AdvancedControls.Controls
             if (wasSelected) RaiseSelectionChanged();
         }
 
+        /// <summary>
+        /// 열 인덱스를 데이터 셀 배열 인덱스로 변환한다. 체크박스 같은 비데이터 열은 셀을
+        /// 차지하지 않으므로 건너뛴다(비데이터 열이면 -1). 비데이터 열이 없으면 col과 동일.
+        /// </summary>
+        private int DataIndex(int col)
+        {
+            if (col < 0 || col >= _columns.Count || _columns[col].IsCheckBox) return -1;
+            int di = 0;
+            for (int i = 0; i < col; i++) if (!_columns[i].IsCheckBox) di++;
+            return di;
+        }
+
         /// <summary>한 셀 값을 갱신한다(전체 재구성 없이).</summary>
         public void SetCell(int row, int col, string value)
         {
             if (row < 0 || row >= _rows.Count) return;
+            int di = DataIndex(col);
+            if (di < 0) return;
             var cells = _rows[row].Cells;
-            if (col < 0 || col >= cells.Length) return;
-            cells[col] = value;
+            if (di >= cells.Length) return;
+            cells[di] = value;
             Invalidate();
         }
 
@@ -314,12 +389,14 @@ namespace AdvancedControls.Controls
             }
         }
 
-        /// <summary>행 i의 셀 값(열 j). 범위를 벗어나면 빈 문자열.</summary>
+        /// <summary>행 i의 셀 값(열 j). 비데이터 열(체크박스)이거나 범위를 벗어나면 빈 문자열.</summary>
         public string GetCell(int row, int col)
         {
             if (row < 0 || row >= _rows.Count) return string.Empty;
+            int di = DataIndex(col);
+            if (di < 0) return string.Empty;
             var cells = _rows[row].Cells;
-            return col >= 0 && col < cells.Length ? (cells[col] ?? string.Empty) : string.Empty;
+            return di < cells.Length ? (cells[di] ?? string.Empty) : string.Empty;
         }
 
         // ── 레이아웃 계산 ─────────────────────────────────────────────
@@ -418,6 +495,7 @@ namespace AdvancedControls.Controls
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            CommitEdit();   // 리사이즈로 셀 위치가 바뀌므로 편집을 먼저 마친다
             ApplyRoundedRegion();
         }
 
@@ -464,6 +542,7 @@ namespace AdvancedControls.Controls
         private void DrawRows(Graphics g, AdvTheme theme)
         {
             if (_rows.Count == 0 || _columns.Count == 0) return;
+            var handler = CellFormatting;   // 구독자 없으면 셀별 서식 비용 0(빠른 경로)
 
             int first = _scrollY / _rowHeight;
             int y = _viewport.Top - (_scrollY % _rowHeight);
@@ -475,17 +554,17 @@ namespace AdvancedControls.Controls
                 var rowRect = new Rectangle(_viewport.Left, y, _viewport.Width, _rowHeight);
                 var row = _rows[r];
 
-                Color bg;
-                if (row.Selected) bg = theme.Accent;
-                else if (r == _hoverRow) bg = theme.SurfaceHover;
-                else if (_alternatingRows && (r & 1) == 1) bg = altColor;
-                else bg = theme.Surface;
+                Color rowBg;
+                if (row.Selected) rowBg = theme.Accent;
+                else if (r == _hoverRow) rowBg = theme.SurfaceHover;
+                else if (_alternatingRows && (r & 1) == 1) rowBg = altColor;
+                else rowBg = theme.Surface;
 
-                if (bg != theme.Surface)
-                    using (var b = new SolidBrush(bg))
+                if (rowBg != theme.Surface)
+                    using (var b = new SolidBrush(rowBg))
                         g.FillRectangle(b, rowRect);
 
-                Color fg = row.Selected ? theme.OnAccent : theme.Text;
+                Color rowFg = row.Selected ? theme.OnAccent : theme.Text;
 
                 int cx = _viewport.Left - _scrollX;
                 for (int c = 0; c < _columns.Count; c++)
@@ -496,12 +575,33 @@ namespace AdvancedControls.Controls
 
                     if (cellRect.Right <= _viewport.Left || cellRect.Left >= _viewport.Right) continue;
 
-                    var textRect = Rectangle.Intersect(Rectangle.Inflate(cellRect, -8, 0), _viewport);
-                    if (textRect.Width <= 0) continue;
+                    if (col.IsCheckBox) { DrawCheck(g, cellRect, row.Selected, theme); continue; }
 
-                    TextRenderer.DrawText(g, GetCell(r, c), Font, textRect, fg,
-                        AlignFlags(col.Alignment) | TextFormatFlags.VerticalCenter
-                      | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    string text = GetCell(r, c);
+                    Color cellFg = rowFg;
+                    Font cellFont = Font;
+
+                    if (handler != null)
+                    {
+                        _fmtArgs.RowIndex = r; _fmtArgs.ColumnIndex = c; _fmtArgs.Selected = row.Selected;
+                        _fmtArgs.Value = text; _fmtArgs.BackColor = rowBg; _fmtArgs.ForeColor = rowFg; _fmtArgs.Font = null;
+                        handler(this, _fmtArgs);
+                        text = _fmtArgs.Value ?? string.Empty;
+                        cellFg = _fmtArgs.ForeColor;
+                        cellFont = _fmtArgs.Font ?? Font;
+
+                        // 셀 배경이 행 배경과 다르면 그 셀만 덮어 칠한다(뷰포트로 클립)
+                        if (_fmtArgs.BackColor != rowBg)
+                        {
+                            var fillRect = Rectangle.Intersect(cellRect, _viewport);
+                            if (fillRect.Width > 0)
+                                using (var b = new SolidBrush(_fmtArgs.BackColor))
+                                    g.FillRectangle(b, fillRect);
+                        }
+                    }
+
+                    var inner = Rectangle.Inflate(cellRect, -CellPadX, 0);
+                    DrawClippedText(g, text, inner, _viewport, cellFont, cellFg, col.Alignment);
                 }
             }
         }
@@ -562,15 +662,28 @@ namespace AdvancedControls.Controls
 
                     if (cellRect.Right <= _headerRect.Left || cellRect.Left >= _headerRect.Right) continue;
 
-                    // 정렬 화살표 자리를 오른쪽에 비운다
+                    // 체크박스 열 머리글 = 전체선택 체크박스(빈칸/체크/부분선택 대시)
+                    if (col.IsCheckBox)
+                    {
+                        const int hbox = 16;
+                        var hr = new Rectangle(cellRect.Left + (cellRect.Width - hbox) / 2,
+                                               cellRect.Top + (cellRect.Height - hbox) / 2, hbox, hbox);
+                        if (hr.Right > _headerRect.Left && hr.Left < _headerRect.Right)
+                        {
+                            int st = SelectAllState();
+                            if (st == 0) DrawCheckBox(g, hr, 0, theme.Surface, theme.Border, theme.Border);
+                            else DrawCheckBox(g, hr, st, theme.Accent, theme.OnAccent, theme.Accent);
+                        }
+                        if (cellRect.Right > _headerRect.Left && cellRect.Right < _headerRect.Right)
+                            g.DrawLine(pen, cellRect.Right, _headerRect.Top, cellRect.Right, _headerRect.Bottom);
+                        continue;
+                    }
+
+                    // 정렬 화살표 자리를 오른쪽에 비운다. 데이터 셀과 같은 부분열 처리로 헤더도 함께 스크롤.
                     int arrow = (_sortCol == c) ? 14 : 0;
-                    var textRect = Rectangle.Intersect(
-                        new Rectangle(cellRect.Left + 8, cellRect.Top, Math.Max(0, col.Width - 16 - arrow), cellRect.Height),
-                        _headerRect);
-                    if (textRect.Width > 0)
-                        TextRenderer.DrawText(g, col.Header, headerFont, textRect, theme.Text,
-                            AlignFlags(col.Alignment) | TextFormatFlags.VerticalCenter
-                          | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    var hInner = new Rectangle(cellRect.Left + CellPadX, cellRect.Top,
+                                               Math.Max(0, col.Width - CellPadX * 2 - arrow), cellRect.Height);
+                    DrawClippedText(g, col.Header, hInner, _headerRect, headerFont, theme.Text, col.Alignment);
 
                     if (_sortCol == c)
                     {
@@ -629,6 +742,95 @@ namespace AdvancedControls.Controls
             }
         }
 
+        /// <summary>
+        /// 셀/머리글 텍스트를 그린다. clip(뷰포트·헤더) 안에 완전히 들어오면 TextRenderer(선명 + 넘침 …),
+        /// 가로 스크롤로 변을 넘은 부분열은 GDI+ DrawString으로 활성 클립을 따라 잘림표 없이 부드럽게 클립한다.
+        /// </summary>
+        private void DrawClippedText(Graphics g, string text, Rectangle inner, Rectangle clip, Font font,
+                                     Color fg, HorizontalAlignment align)
+        {
+            if (string.IsNullOrEmpty(text) || inner.Width <= 0) return;
+            if (inner.Left >= clip.Left && inner.Right <= clip.Right)
+                TextRenderer.DrawText(g, text, font, inner, fg,
+                    AlignFlags(align) | TextFormatFlags.VerticalCenter
+                  | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            else
+                DrawCellString(g, text, inner, font, fg, align);
+        }
+
+        private void DrawCellString(Graphics g, string text, Rectangle rect, Font font, Color fg, HorizontalAlignment align)
+        {
+            var prev = g.TextRenderingHint;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+            using (var sf = new StringFormat(StringFormatFlags.NoWrap))
+            using (var br = new SolidBrush(fg))
+            {
+                sf.LineAlignment = StringAlignment.Center;
+                sf.Trimming = StringTrimming.None;   // 스크롤 중이므로 잘림표 없이 클립
+                sf.Alignment = align == HorizontalAlignment.Center ? StringAlignment.Center
+                             : align == HorizontalAlignment.Right ? StringAlignment.Far : StringAlignment.Near;
+                g.DrawString(text, font, br, (RectangleF)rect, sf);
+            }
+            g.TextRenderingHint = prev;
+        }
+
+        /// <summary>체크박스 하나. state: 0=빈칸, 1=체크, 2=대시(부분선택).</summary>
+        private static void DrawCheckBox(Graphics g, Rectangle box, int state, Color fill, Color mark, Color border)
+        {
+            var sm = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = AdvGraphics.CreateRoundedRect(box, new AdvCorners(4)))
+            {
+                if (fill.A > 0) using (var b = new SolidBrush(fill)) g.FillPath(b, path);
+                using (var pen = new Pen(border)) g.DrawPath(pen, path);
+            }
+            var ci = Rectangle.Inflate(box, -4, -4);
+            if (state == 1)
+                using (var pen = new Pen(mark, 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                    g.DrawLines(pen, new[]
+                    {
+                        new Point(ci.Left, ci.Top + ci.Height * 3 / 5),
+                        new Point(ci.Left + ci.Width * 2 / 5, ci.Bottom),
+                        new Point(ci.Right, ci.Top)
+                    });
+            else if (state == 2)
+                using (var pen = new Pen(mark, 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                    g.DrawLine(pen, ci.Left, box.Top + box.Height / 2, ci.Right, box.Top + box.Height / 2);
+            g.SmoothingMode = sm;
+        }
+
+        /// <summary>셀 체크박스. 선택 행은 강조 배경 위라 외곽선·체크를 OnAccent로 그린다.</summary>
+        private void DrawCheck(Graphics g, Rectangle cellRect, bool selected, AdvTheme theme)
+        {
+            const int box = 16;
+            var r = new Rectangle(cellRect.Left + (cellRect.Width - box) / 2,
+                                  cellRect.Top + (cellRect.Height - box) / 2, box, box);
+            if (r.Right <= _viewport.Left || r.Left >= _viewport.Right) return;   // 가로 스크롤로 벗어나면 스킵
+            if (selected)
+                DrawCheckBox(g, r, 1, Color.Empty, theme.OnAccent, theme.OnAccent);
+            else
+                DrawCheckBox(g, r, 0, theme.Surface, theme.Border, theme.Border);
+        }
+
+        /// <summary>전체선택 상태. 0=하나도 선택 안 됨, 1=전부, 2=일부.</summary>
+        private int SelectAllState()
+        {
+            if (_rows.Count == 0) return 0;
+            int sel = 0;
+            foreach (var r in _rows) if (r.Selected) sel++;
+            return sel == 0 ? 0 : (sel == _rows.Count ? 1 : 2);
+        }
+
+        /// <summary>머리글 체크박스를 눌렀을 때: 전부 선택돼 있으면 해제, 아니면 전부 선택.</summary>
+        private void ToggleAll()
+        {
+            bool target = SelectAllState() != 1;   // 전부 아니면 전부 선택, 전부면 해제
+            foreach (var r in _rows) r.Selected = target;
+            _anchor = -1;
+            Invalidate();
+            RaiseSelectionChanged();
+        }
+
         private static TextFormatFlags AlignFlags(HorizontalAlignment a)
         {
             switch (a)
@@ -665,20 +867,38 @@ namespace AdvancedControls.Controls
                 return;
             }
 
-            // 2) 헤더: 열 경계면 리사이즈, 아니면 정렬
+            // 2) 헤더: 열 경계면 리사이즈, 체크박스 열이면 전체선택, 아니면 정렬
             if (_headerRect.Contains(e.Location))
             {
                 int edge = HitColumnEdge(e.X);
                 if (edge >= 0) { _resizeCol = edge; _resizeStartX = e.X; _resizeStartW = _columns[edge].Width; }
-                else { int col = HitColumn(e.X); if (col >= 0) SortByColumn(col); }
+                else
+                {
+                    int col = HitColumn(e.X);
+                    if (col >= 0)
+                    {
+                        if (_columns[col].IsCheckBox) ToggleAll();
+                        else SortByColumn(col);
+                    }
+                }
                 return;
             }
 
-            // 3) 데이터 행 선택
+            // 3) 데이터: 체크박스 열이면 그 행 선택 토글, 아니면 일반 행 선택
             if (_viewport.Contains(e.Location))
             {
                 int row = RowAt(e.Y);
-                if (row >= 0) HandleRowClick(row);
+                if (row < 0) return;
+                int col = HitColumn(e.X);
+                if (col >= 0 && _columns[col].IsCheckBox)
+                {
+                    _rows[row].Selected = !_rows[row].Selected;
+                    _anchor = row; _focusRow = row;
+                    EnsureRowVisible(row);
+                    Invalidate();
+                    RaiseSelectionChanged();
+                }
+                else HandleRowClick(row);
             }
         }
 
@@ -736,14 +956,43 @@ namespace AdvancedControls.Controls
         protected override void OnMouseDoubleClick(MouseEventArgs e)
         {
             base.OnMouseDoubleClick(e);
+            EnsureLayout();
+
+            // 헤더의 열 경계를 더블클릭하면 내용에 맞춰 폭을 자동 조정한다
+            if (_headerRect.Contains(e.Location))
+            {
+                int edge = HitColumnEdge(e.X);
+                if (edge >= 0) { AutoFitColumn(edge); return; }
+            }
+
             if (!_viewport.Contains(e.Location)) return;
             int row = RowAt(e.Y);
             int col = HitColumn(e.X);
             if (row >= 0 && col >= 0)
             {
+                // 편집 가능하면 인라인 편집 시작, 아니면 더블클릭 이벤트
+                if (!_readOnly && DataIndex(col) >= 0) { BeginEdit(row, col); return; }
                 var h = CellDoubleClick;
                 if (h != null) h(this, new AdvGridCellEventArgs(row, col));
             }
+        }
+
+        /// <summary>열 폭을 머리글+모든 셀 내용 중 가장 넓은 것에 맞춘다(사용자 조작이라 전 행 측정 허용).</summary>
+        public void AutoFitColumn(int col)
+        {
+            if (col < 0 || col >= _columns.Count) return;
+            int arrow = (_sortCol == col) ? 14 : 0;
+            int w = TextRenderer.MeasureText(_columns[col].Header ?? string.Empty, HeaderFont).Width + CellPadX * 2 + arrow;
+            for (int r = 0; r < _rows.Count; r++)
+            {
+                int cw = TextRenderer.MeasureText(GetCell(r, col), Font).Width + CellPadX * 2;
+                if (cw > w) w = cw;
+            }
+            _columns[col].Width = w;   // 세터가 MinWidth로 하한 클램프
+            EnsureLayout();
+            Invalidate();
+            var h = ColumnWidthChanged;
+            if (h != null) h(this, new AdvGridColumnEventArgs(col, _columns[col]));
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -760,8 +1009,18 @@ namespace AdvancedControls.Controls
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
+            CommitEdit();   // 스크롤하면 편집기가 셀에서 벗어나므로 먼저 반영
             EnsureLayout();
-            if (_vBar)
+            // Shift를 누르거나 세로바 없이 가로바만 있으면 가로로 스크롤한다
+            bool horizontal = (ModifierKeys & Keys.Shift) != 0 || (!_vBar && _hBar);
+            if (horizontal && _hBar)
+            {
+                int before = _scrollX;
+                _scrollX -= Math.Sign(e.Delta) * HScrollStep;
+                ClampScroll();
+                if (_scrollX != before) Invalidate();
+            }
+            else if (_vBar)
             {
                 int before = _scrollY;
                 _scrollY -= Math.Sign(e.Delta) * _rowHeight * 3;
@@ -884,6 +1143,8 @@ namespace AdvancedControls.Controls
         private void SortByColumn(int col)
         {
             if (col < 0 || col >= _columns.Count || !_columns[col].Sortable) return;
+            int di = DataIndex(col);
+            if (di < 0) return;   // 비데이터 열은 정렬 대상 아님
 
             if (_sortCol == col) _sortAsc = !_sortAsc;
             else { _sortCol = col; _sortAsc = true; }
@@ -891,7 +1152,7 @@ namespace AdvancedControls.Controls
             bool numeric = true;
             foreach (var r in _rows)
             {
-                string s = col < r.Cells.Length ? r.Cells[col] : null;
+                string s = di < r.Cells.Length ? r.Cells[di] : null;
                 if (string.IsNullOrEmpty(s)) continue;
                 double d;
                 if (!double.TryParse(s, NumberStyles.Any, CultureInfo.CurrentCulture, out d))
@@ -901,8 +1162,8 @@ namespace AdvancedControls.Controls
             int dir = _sortAsc ? 1 : -1;
             _rows.Sort((x, y) =>
             {
-                string sx = col < x.Cells.Length ? (x.Cells[col] ?? "") : "";
-                string sy = col < y.Cells.Length ? (y.Cells[col] ?? "") : "";
+                string sx = di < x.Cells.Length ? (x.Cells[di] ?? "") : "";
+                string sy = di < y.Cells.Length ? (y.Cells[di] ?? "") : "";
                 int cmp;
                 if (numeric)
                 {
@@ -940,6 +1201,116 @@ namespace AdvancedControls.Controls
             if (h != null) h(this, EventArgs.Empty);
         }
 
+        // ── 인라인 편집 ───────────────────────────────────────────────
+
+        private TextBox EnsureEditor()
+        {
+            if (_editor == null)
+            {
+                _editor = new TextBox { BorderStyle = BorderStyle.None, AutoSize = false, Visible = false };
+                _editor.KeyDown += Editor_KeyDown;
+                _editor.LostFocus += (s, e) => CommitEdit();
+                Controls.Add(_editor);
+            }
+            return _editor;
+        }
+
+        /// <summary>보이는 셀의 클라이언트 사각형. 스크롤로 화면 밖이면 Empty.</summary>
+        private Rectangle CellRectClient(int row, int col)
+        {
+            if (row < 0 || col < 0 || col >= _columns.Count) return Rectangle.Empty;
+            int y = _viewport.Top + row * _rowHeight - _scrollY;
+            if (y + _rowHeight <= _viewport.Top || y >= _viewport.Bottom) return Rectangle.Empty;
+            int cx = _viewport.Left - _scrollX;
+            for (int c = 0; c < col; c++) cx += _columns[c].Width;
+            return Rectangle.Intersect(new Rectangle(cx, y, _columns[col].Width, _rowHeight), _viewport);
+        }
+
+        /// <summary>셀 인라인 편집을 시작한다. ReadOnly이거나 비데이터(체크박스) 열이면 무시.</summary>
+        public void BeginEdit(int row, int col)
+        {
+            if (_readOnly || row < 0 || row >= _rows.Count) return;
+            if (col < 0 || col >= _columns.Count || DataIndex(col) < 0) return;
+            CommitEdit();
+            EnsureLayout();
+            var rect = CellRectClient(row, col);
+            if (rect.Width <= 2 || rect.Height <= 2) return;
+
+            _editRow = row; _editCol = col;
+            var theme = EffectiveTheme;
+            var ed = EnsureEditor();
+            ed.Font = Font;
+            ed.BackColor = theme.Surface;
+            ed.ForeColor = theme.Text;
+            ed.TextAlign = _columns[col].Alignment;   // 열 정렬에 맞춤(숫자 열은 우측 등)
+            ed.Bounds = Rectangle.Inflate(rect, -2, -2);   // 격자선 안쪽
+            ed.Text = GetCell(row, col);
+            ed.Visible = true;
+            ed.BringToFront();
+            ed.Focus();
+            ed.SelectAll();
+        }
+
+        /// <summary>편집 중이면 편집기 값을 셀에 반영하고 편집을 끝낸다.</summary>
+        public void CommitEdit()
+        {
+            if (_editRow < 0 || _editor == null || !_editor.Visible) return;
+            int r = _editRow, c = _editCol;
+            string val = _editor.Text;
+            bool changed = GetCell(r, c) != val;
+            EndEdit();
+            if (changed)
+            {
+                SetCell(r, c, val);
+                var h = CellValueChanged;
+                if (h != null) h(this, new AdvGridCellEventArgs(r, c));
+            }
+        }
+
+        /// <summary>편집 중이면 변경을 버리고 끝낸다.</summary>
+        public void CancelEdit()
+        {
+            if (_editRow < 0) return;
+            EndEdit();
+            Invalidate();
+        }
+
+        private void EndEdit()
+        {
+            _editRow = _editCol = -1;
+            if (_editor != null) _editor.Visible = false;
+        }
+
+        private int NextEditableColumn(int from, bool forward)
+        {
+            int step = forward ? 1 : -1;
+            for (int c = from + step; c >= 0 && c < _columns.Count; c += step)
+                if (DataIndex(c) >= 0) return c;
+            return -1;
+        }
+
+        private void Editor_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                CommitEdit(); Focus();
+                e.Handled = e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                CancelEdit(); Focus();
+                e.Handled = e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Tab)
+            {
+                int r = _editRow, c = _editCol;
+                CommitEdit();
+                int nc = NextEditableColumn(c, !e.Shift);
+                if (nc >= 0) BeginEdit(r, nc); else Focus();
+                e.Handled = e.SuppressKeyPress = true;
+            }
+        }
+
         // ── 키보드 ────────────────────────────────────────────────────
 
         protected override bool IsInputKey(Keys keyData)
@@ -952,6 +1323,9 @@ namespace AdvancedControls.Controls
                 case Keys.PageDown:
                 case Keys.Home:
                 case Keys.End:
+                case Keys.Left:
+                case Keys.Right:
+                case Keys.F2:
                     return true;
             }
             return base.IsInputKey(keyData);
@@ -960,6 +1334,32 @@ namespace AdvancedControls.Controls
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
+            EnsureLayout();
+
+            // 좌우 방향키는 열이 넘칠 때 가로 스크롤한다(행 선택과 무관)
+            if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
+            {
+                if (_hBar)
+                {
+                    int before = _scrollX;
+                    _scrollX += (e.KeyCode == Keys.Left ? -1 : 1) * HScrollStep;
+                    ClampScroll();
+                    if (_scrollX != before) Invalidate();
+                }
+                e.Handled = true;
+                return;
+            }
+
+            // F2 = 현재 행의 첫 편집 가능 열을 편집
+            if (e.KeyCode == Keys.F2 && !_readOnly)
+            {
+                int r = (_focusRow >= 0 && _focusRow < _rows.Count) ? _focusRow : SelectedIndex;
+                int c = NextEditableColumn(-1, true);
+                if (r >= 0 && c >= 0) BeginEdit(r, c);
+                e.Handled = true;
+                return;
+            }
+
             if (_rows.Count == 0) return;
 
             int cur = (_focusRow >= 0 && _focusRow < _rows.Count) ? _focusRow : SelectedIndex;
@@ -1020,6 +1420,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.SelectionMode; }
             set { _owner.SelectionMode = value; }
+        }
+
+        [DefaultValue(true)]
+        [Description("읽기 전용 여부입니다. false면 더블클릭·F2로 셀을 인라인 편집할 수 있습니다.")]
+        public bool ReadOnly
+        {
+            get { return _owner.ReadOnly; }
+            set { _owner.ReadOnly = value; }
         }
 
         [DefaultValue(true)]

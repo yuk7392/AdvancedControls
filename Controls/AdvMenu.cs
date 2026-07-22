@@ -8,20 +8,48 @@ using AdvancedControls.Theming;
 
 namespace AdvancedControls.Controls
 {
-    /// <summary>메뉴 항목 하나. 구분선이거나, 텍스트·단축키·활성 여부를 갖는 클릭 항목이다.</summary>
+    /// <summary>메뉴 항목 하나. 구분선이거나, 텍스트·단축키·활성 여부를 갖는 클릭 항목이다. 자식을 담으면 서브메뉴가 된다.</summary>
     public class AdvMenuItem
     {
+        private List<AdvMenuItem> _children;
+
         public string Text { get; set; }
         public string Shortcut { get; set; }
         public bool Enabled { get; set; }
         public object Tag { get; set; }
         public bool IsSeparator { get; internal set; }
 
-        /// <summary>항목을 클릭(또는 Enter)하면 발생한다.</summary>
+        /// <summary>항목을 클릭(또는 Enter)하면 발생한다. 서브메뉴 부모 항목은 발생하지 않는다.</summary>
         public event EventHandler Click;
 
         public AdvMenuItem() { Enabled = true; }
         public AdvMenuItem(string text) { Text = text; Enabled = true; }
+
+        internal bool HasChildren { get { return _children != null && _children.Count > 0; } }
+        internal List<AdvMenuItem> ChildList { get { return _children; } }
+
+        /// <summary>이 항목의 서브메뉴 항목들. 처음 접근할 때 만들어진다.</summary>
+        [Browsable(false)]
+        public IList<AdvMenuItem> Children { get { return _children ?? (_children = new List<AdvMenuItem>()); } }
+
+        /// <summary>서브메뉴 항목을 추가하고 돌려준다(이 항목이 서브메뉴 부모가 된다).</summary>
+        public AdvMenuItem Add(string text)
+        {
+            var it = new AdvMenuItem(text);
+            Children.Add(it);
+            return it;
+        }
+
+        /// <summary>서브메뉴 텍스트·단축키 항목을 추가하고 돌려준다.</summary>
+        public AdvMenuItem Add(string text, string shortcut)
+        {
+            var it = new AdvMenuItem(text) { Shortcut = shortcut };
+            Children.Add(it);
+            return it;
+        }
+
+        /// <summary>서브메뉴에 구분선을 추가한다.</summary>
+        public void AddSeparator() { Children.Add(Separator()); }
 
         internal void PerformClick()
         {
@@ -34,107 +62,179 @@ namespace AdvancedControls.Controls
     }
 
     /// <summary>
-    /// 팝업 안에서 항목 목록을 직접 그리는 뷰. 호버·클릭·화살표 키를 처리하고,
-    /// 항목이 선택되면 <see cref="ItemChosen"/>, 닫아야 하면 <see cref="CloseRequested"/>를 알린다.
+    /// 팝업 안에서 메뉴를 직접 그리는 뷰. 서브메뉴를 별도 창이 아니라 이 한 표면 위에
+    /// 오른쪽 '칸(column)'으로 펼쳐 그린다(경량화 — 창·메시지 필터 추가 없음).
+    /// 항목 선택 시 <see cref="ItemChosen"/>, 닫아야 하면 <see cref="CloseRequested"/>,
+    /// 칸이 열리고 닫혀 크기가 바뀌면 <see cref="LayoutResized"/>를 알린다.
     /// </summary>
     internal sealed class AdvMenuView : Control
     {
         private const int ItemH = 26;
         private const int SepH = 9;
         private const int TextLeft = 28;
-        private const int RightPad = 18;
+        private const int RightPad = 26;
         private const int ShortcutGap = 28;
+        private const int ChevW = 14;      // 서브메뉴 셰브런 자리
+        private const int ColPad = 5;      // 칸 위아래 여백
+        private const int ColOverlap = 4;  // 서브메뉴 칸이 부모 칸 오른쪽에 겹치는 정도
 
-        private readonly List<AdvMenuItem> _items;
-        private int _hover = -1;
+        private sealed class Col
+        {
+            public readonly List<AdvMenuItem> Items;
+            public int Hover = -1;
+            public int OpenChild = -1;
+            public Rectangle Bounds;   // 뷰 좌표
+            public Col(List<AdvMenuItem> items) { Items = items; }
+        }
+
+        private readonly List<Col> _cols = new List<Col>();
 
         public event Action<AdvMenuItem> ItemChosen;
         public event Action CloseRequested;
+        public event Action LayoutResized;
 
-        public AdvMenuView(List<AdvMenuItem> items)
+        public AdvMenuView(List<AdvMenuItem> rootItems)
         {
-            _items = items;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
                    | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
-            Size = Measure();
-            // 팝업이 열린 채 앱이 테마를 바꾸면 즉시 다시 그린다(Control 직접 상속이라 베이스의 자동 구독이 없음)
+            _cols.Add(new Col(rootItems));
+            LayoutColumns();
             AdvThemeManager.ThemeChanged += OnGlobalThemeChanged;
         }
 
         private void OnGlobalThemeChanged(object sender, EventArgs e) { if (!IsDisposed) Invalidate(); }
 
-        private Size Measure()
+        /// <summary>각 칸의 뷰 좌표 사각형(호스트가 창 Region을 이 합집합으로 잡는다).</summary>
+        public Rectangle[] ColumnBounds
         {
-            // CreateGraphics()는 부모 편입 전에 네이티브 핸들을 강제 생성하므로, Graphics 없는
-            // TextRenderer.MeasureText 오버로드로 측정한다(핸들 생성·측정 비용 제거).
-            int h = 5, w = 150;
-            using (var sf = new Font(Font, FontStyle.Regular))
-            {
-                foreach (var it in _items)
-                {
-                    if (it.IsSeparator) { h += SepH; continue; }
-                    int tw = TextRenderer.MeasureText(it.Text ?? "", sf).Width;
-                    int sw = string.IsNullOrEmpty(it.Shortcut) ? 0 : ShortcutGap + TextRenderer.MeasureText(it.Shortcut, sf).Width;
-                    w = Math.Max(w, TextLeft + tw + sw + RightPad);
-                    h += ItemH;
-                }
-            }
-            return new Size(w, h + 5);
+            get { var arr = new Rectangle[_cols.Count]; for (int i = 0; i < _cols.Count; i++) arr[i] = _cols[i].Bounds; return arr; }
         }
 
-        private int ItemTop(int index)
+        // ── 측정·레이아웃 ─────────────────────────────────────────────
+
+        private int ColWidth(List<AdvMenuItem> items)
         {
-            int y = 5;
-            for (int i = 0; i < index; i++) y += _items[i].IsSeparator ? SepH : ItemH;
+            int w = 120;
+            using (var sf = new Font(Font, FontStyle.Regular))
+                foreach (var it in items)
+                {
+                    if (it.IsSeparator) continue;
+                    int tw = TextRenderer.MeasureText(it.Text ?? "", sf).Width;
+                    int extra = it.HasChildren
+                        ? ChevW
+                        : (string.IsNullOrEmpty(it.Shortcut) ? 0 : ShortcutGap + TextRenderer.MeasureText(it.Shortcut, sf).Width);
+                    w = Math.Max(w, TextLeft + tw + extra + RightPad);
+                }
+            return w;
+        }
+
+        private static int ColHeight(List<AdvMenuItem> items)
+        {
+            int h = ColPad * 2;
+            foreach (var it in items) h += it.IsSeparator ? SepH : ItemH;
+            return h;
+        }
+
+        private static int ItemTop(Col col, int index)
+        {
+            int y = col.Bounds.Top + ColPad;
+            for (int i = 0; i < index; i++) y += col.Items[i].IsSeparator ? SepH : ItemH;
             return y;
         }
 
-        private int ItemAt(int y)
+        private static Rectangle ItemRect(Col col, int index)
         {
-            int top = 5;
-            for (int i = 0; i < _items.Count; i++)
-            {
-                int hgt = _items[i].IsSeparator ? SepH : ItemH;
-                if (y >= top && y < top + hgt) return i;
-                top += hgt;
-            }
-            return -1;
+            int h = col.Items[index].IsSeparator ? SepH : ItemH;
+            return new Rectangle(col.Bounds.Left, ItemTop(col, index), col.Bounds.Width, h);
         }
+
+        private void LayoutColumns()
+        {
+            int maxRight = 0, maxBottom = 0, minTop = 0;
+            for (int c = 0; c < _cols.Count; c++)
+            {
+                var col = _cols[c];
+                int w = ColWidth(col.Items), h = ColHeight(col.Items);
+                int cx, cy;
+                if (c == 0) { cx = 0; cy = 0; }
+                else
+                {
+                    var parent = _cols[c - 1];
+                    cx = parent.Bounds.Right - ColOverlap;
+                    cy = ItemTop(parent, parent.OpenChild) - ColPad;   // 부모 항목 높이에 맞춤
+                }
+                col.Bounds = new Rectangle(cx, cy, w, h);
+                maxRight = Math.Max(maxRight, col.Bounds.Right);
+                maxBottom = Math.Max(maxBottom, col.Bounds.Bottom);
+                minTop = Math.Min(minTop, col.Bounds.Top);
+            }
+
+            // 서브 칸이 위로 넘치면(부모 항목이 아래쪽) 전체를 아래로 밀어 음수 좌표를 없앤다
+            if (minTop < 0)
+            {
+                for (int c = 0; c < _cols.Count; c++)
+                {
+                    var b = _cols[c].Bounds;
+                    _cols[c].Bounds = new Rectangle(b.X, b.Y - minTop, b.Width, b.Height);
+                }
+                maxBottom -= minTop;
+            }
+
+            var newSize = new Size(Math.Max(1, maxRight), Math.Max(1, maxBottom));
+            bool changed = Size != newSize;
+            if (changed) Size = newSize;
+            var h2 = LayoutResized;
+            if (h2 != null) h2();
+            Invalidate();
+        }
+
+        // ── 그리기 ────────────────────────────────────────────────────
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = AdvThemeManager.Current;
             var g = e.Graphics;
-            var bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+            for (int c = 0; c < _cols.Count; c++) DrawColumn(g, theme, _cols[c]);
+        }
 
-            AdvFrameRenderer.Draw(g, bounds, theme, new AdvCorners(8), 1,
+        private void DrawColumn(Graphics g, AdvTheme theme, Col col)
+        {
+            var b = col.Bounds;
+            var frame = new Rectangle(b.Left, b.Top, b.Width - 1, b.Height - 1);
+            AdvFrameRenderer.Draw(g, frame, theme, new AdvCorners(8), 1,
                                   theme.Surface, Color.Empty, theme.Border, null);
 
-            for (int i = 0; i < _items.Count; i++)
+            for (int i = 0; i < col.Items.Count; i++)
             {
-                var it = _items[i];
-                int y = ItemTop(i);
+                var it = col.Items[i];
+                var r = ItemRect(col, i);
 
                 if (it.IsSeparator)
                 {
                     using (var pen = new Pen(theme.Border))
-                        g.DrawLine(pen, 8, y + SepH / 2, Width - 8, y + SepH / 2);
+                        g.DrawLine(pen, b.Left + 8, r.Top + SepH / 2, b.Right - 8, r.Top + SepH / 2);
                     continue;
                 }
 
-                var row = new Rectangle(4, y, Width - 8, ItemH);
-                bool hot = i == _hover && it.Enabled;
+                bool hot = (i == col.Hover || i == col.OpenChild) && it.Enabled;
+                var row = new Rectangle(b.Left + 4, r.Top, b.Width - 8, ItemH);
                 if (hot)
-                    using (var b = new SolidBrush(theme.Accent))
+                    using (var br = new SolidBrush(theme.Accent))
                     using (var path = AdvGraphics.CreateRoundedRect(row, new AdvCorners(5)))
-                        g.FillPath(b, path);
+                        g.FillPath(br, path);
 
                 Color fg = !it.Enabled ? theme.TextDisabled : hot ? theme.OnAccent : theme.Text;
-                var textRect = Rectangle.FromLTRB(TextLeft, y, Width - RightPad, y + ItemH);
-                TextRenderer.DrawText(g, it.Text ?? "", Font, textRect, fg,   // 측정(Measure)과 동일하게 null 방어
+                var textRect = Rectangle.FromLTRB(b.Left + TextLeft, r.Top, b.Right - RightPad, r.Bottom);
+                TextRenderer.DrawText(g, it.Text ?? "", Font, textRect, fg,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
-                if (!string.IsNullOrEmpty(it.Shortcut))
+                if (it.HasChildren)
+                {
+                    var chev = new Rectangle(b.Right - RightPad + 4, r.Top, ChevW, ItemH);
+                    Color cc = !it.Enabled ? theme.TextDisabled : hot ? theme.OnAccent : theme.TextMuted;
+                    AdvGraphics.DrawChevron(g, chev, AdvGraphics.ChevronDirection.Right, cc, 7, 4, 1.4f, 0);
+                }
+                else if (!string.IsNullOrEmpty(it.Shortcut))
                 {
                     Color sc = !it.Enabled ? theme.TextDisabled : hot ? theme.OnAccent : theme.TextMuted;
                     TextRenderer.DrawText(g, it.Shortcut, Font, textRect, sc,
@@ -143,32 +243,92 @@ namespace AdvancedControls.Controls
             }
         }
 
+        // ── 히트테스트 ────────────────────────────────────────────────
+
+        /// <summary>칸·항목 히트테스트. 겹친 영역은 더 깊은 칸이 위에 있으므로 뒤에서부터 본다.</summary>
+        private void HitTest(Point p, out int colIndex, out int itemIndex)
+        {
+            colIndex = itemIndex = -1;
+            for (int c = _cols.Count - 1; c >= 0; c--)
+            {
+                var col = _cols[c];
+                if (!col.Bounds.Contains(p)) continue;
+                colIndex = c;
+                int top = col.Bounds.Top + ColPad;
+                for (int i = 0; i < col.Items.Count; i++)
+                {
+                    int h = col.Items[i].IsSeparator ? SepH : ItemH;
+                    if (p.Y >= top && p.Y < top + h) { itemIndex = i; return; }
+                    top += h;
+                }
+                return;
+            }
+        }
+
+        private void TruncateTo(int colIndex)
+        {
+            for (int c = _cols.Count - 1; c > colIndex; c--) _cols.RemoveAt(c);
+        }
+
+        // ── 마우스 ────────────────────────────────────────────────────
+
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            int i = ItemAt(e.Y);
-            if (i >= 0 && (_items[i].IsSeparator || !_items[i].Enabled)) i = -1;
-            if (i != _hover) { _hover = i; Invalidate(); }
-        }
+            int ci, ii;
+            HitTest(e.Location, out ci, out ii);
+            if (ci < 0) return;   // 칸 사이 빈 곳: 그대로 둔다(마우스가 서브 칸으로 가는 중일 수 있음)
 
-        protected override void OnMouseLeave(EventArgs e)
-        {
-            base.OnMouseLeave(e);
-            if (_hover != -1) { _hover = -1; Invalidate(); }
+            var col = _cols[ci];
+            int hi = (ii >= 0 && !col.Items[ii].IsSeparator && col.Items[ii].Enabled) ? ii : -1;
+
+            bool alreadyDeepest = ci == _cols.Count - 1;
+            if (col.Hover == hi && (alreadyDeepest || col.OpenChild == hi)) return;
+
+            TruncateTo(ci);
+            col.Hover = hi;
+            col.OpenChild = -1;
+            if (hi >= 0 && col.Items[hi].HasChildren)
+            {
+                col.OpenChild = hi;
+                _cols.Add(new Col(col.Items[hi].ChildList));
+            }
+            LayoutColumns();
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            int i = ItemAt(e.Y);
-            if (i >= 0 && !_items[i].IsSeparator && _items[i].Enabled) Choose(_items[i]);
+            int ci, ii;
+            HitTest(e.Location, out ci, out ii);
+            if (ci < 0 || ii < 0) return;
+            var it = _cols[ci].Items[ii];
+            if (it.IsSeparator || !it.Enabled) return;
+
+            if (it.HasChildren)
+            {
+                if (_cols[ci].OpenChild != ii)
+                {
+                    TruncateTo(ci);
+                    _cols[ci].Hover = ii;
+                    _cols[ci].OpenChild = ii;
+                    _cols.Add(new Col(it.ChildList));
+                    LayoutColumns();
+                }
+                return;
+            }
+            Choose(it);
         }
+
+        // ── 키보드 ────────────────────────────────────────────────────
 
         protected override bool IsInputKey(Keys keyData)
         {
             switch (keyData & Keys.KeyCode)
             {
-                case Keys.Up: case Keys.Down: case Keys.Return: case Keys.Escape: return true;
+                case Keys.Up: case Keys.Down: case Keys.Left: case Keys.Right:
+                case Keys.Return: case Keys.Escape:
+                    return true;
             }
             return base.IsInputKey(keyData);
         }
@@ -176,12 +336,28 @@ namespace AdvancedControls.Controls
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
+            var deep = _cols[_cols.Count - 1];
             switch (e.KeyCode)
             {
-                case Keys.Down: Step(+1); e.Handled = true; break;
-                case Keys.Up: Step(-1); e.Handled = true; break;
+                case Keys.Down: MoveHover(deep, +1); e.Handled = true; break;
+                case Keys.Up: MoveHover(deep, -1); e.Handled = true; break;
+                case Keys.Right:
+                    if (deep.Hover >= 0 && deep.Items[deep.Hover].HasChildren) OpenChildKeyboard(deep);
+                    e.Handled = true; break;
+                case Keys.Left:
+                    if (_cols.Count > 1)
+                    {
+                        _cols.RemoveAt(_cols.Count - 1);
+                        _cols[_cols.Count - 1].OpenChild = -1;
+                        LayoutColumns();
+                    }
+                    e.Handled = true; break;
                 case Keys.Return:
-                    if (_hover >= 0) Choose(_items[_hover]);
+                    if (deep.Hover >= 0)
+                    {
+                        var it = deep.Items[deep.Hover];
+                        if (it.HasChildren) OpenChildKeyboard(deep); else Choose(it);
+                    }
                     e.Handled = true; break;
                 case Keys.Escape:
                     var c = CloseRequested; if (c != null) c();
@@ -189,17 +365,27 @@ namespace AdvancedControls.Controls
             }
         }
 
-        /// <summary>구분선·비활성을 건너뛰며 다음 선택 가능한 항목으로 이동한다.</summary>
-        private void Step(int dir)
+        private void OpenChildKeyboard(Col deep)
         {
-            if (_items.Count == 0) return;
-            int i = _hover;
-            for (int n = 0; n < _items.Count; n++)
+            int hi = deep.Hover;
+            deep.OpenChild = hi;
+            var child = new Col(deep.Items[hi].ChildList);
+            _cols.Add(child);
+            LayoutColumns();
+            MoveHover(child, +1);   // 첫 선택 가능 항목
+        }
+
+        /// <summary>구분선·비활성을 건너뛰며 그 칸의 hover를 이동한다.</summary>
+        private void MoveHover(Col col, int dir)
+        {
+            if (col.Items.Count == 0) return;
+            int i = col.Hover;
+            for (int n = 0; n < col.Items.Count; n++)
             {
                 i += dir;
-                if (i < 0) i = _items.Count - 1;
-                if (i >= _items.Count) i = 0;
-                if (!_items[i].IsSeparator && _items[i].Enabled) { _hover = i; Invalidate(); return; }
+                if (i < 0) i = col.Items.Count - 1;
+                if (i >= col.Items.Count) i = 0;
+                if (!col.Items[i].IsSeparator && col.Items[i].Enabled) { col.Hover = i; Invalidate(); return; }
             }
         }
 
@@ -218,14 +404,17 @@ namespace AdvancedControls.Controls
 
     /// <summary>
     /// 테마 컨텍스트(우클릭) 메뉴. 항목을 담아 두고 <see cref="Show(Control, Point)"/>로 띄운다.
-    /// 부유·바깥 클릭 자동닫힘은 ToolStripDropDown 껍데기가 맡고, 항목 그리기는 전부 커스텀이다.
+    /// 서브메뉴는 별도 창이 아니라 같은 팝업 안의 오른쪽 칸으로 펼쳐진다(경량).
+    /// 부유·바깥 클릭 자동닫힘은 ToolStripDropDown 껍데기가 맡고, 그리기는 전부 커스텀이다.
     /// </summary>
     [ToolboxItem(true)]
-    [Description("테마를 따르는 커스텀 컨텍스트 메뉴입니다.")]
+    [Description("테마를 따르는 커스텀 컨텍스트 메뉴입니다(서브메뉴 지원).")]
     public class AdvContextMenu : Component
     {
         private readonly List<AdvMenuItem> _items = new List<AdvMenuItem>();
         private ToolStripDropDown _dd;
+        private ToolStripControlHost _host;
+        private AdvMenuView _view;
 
         /// <summary>메뉴가 닫힌 뒤 발생한다.</summary>
         public event EventHandler Closed;
@@ -234,7 +423,7 @@ namespace AdvancedControls.Controls
         [Browsable(false)]
         public IList<AdvMenuItem> Items { get { return _items; } }
 
-        /// <summary>텍스트 항목을 추가하고 돌려준다.</summary>
+        /// <summary>텍스트 항목을 추가하고 돌려준다. 반환된 항목에 Add로 서브메뉴를 붙일 수 있다.</summary>
         public AdvMenuItem Add(string text)
         {
             var it = new AdvMenuItem(text);
@@ -254,34 +443,31 @@ namespace AdvancedControls.Controls
         public void AddSeparator() { _items.Add(AdvMenuItem.Separator()); }
 
         /// <summary>화면 좌표에 연다.</summary>
-        public void Show(Point screenLocation) { ShowInternal(null, screenLocation); }
+        public void Show(Point screenLocation) { ShowInternal(screenLocation); }
 
         /// <summary>owner 기준 좌표에 연다.</summary>
         public void Show(Control owner, Point ownerLocation)
         {
-            ShowInternal(owner, owner != null ? owner.PointToScreen(ownerLocation) : ownerLocation);
+            ShowInternal(owner != null ? owner.PointToScreen(ownerLocation) : ownerLocation);
         }
 
-        private void ShowInternal(Control owner, Point screen)
+        private void ShowInternal(Point screen)
         {
             Close();
             if (_items.Count == 0) return;
 
-            var view = new AdvMenuView(_items);
-            var host = new ToolStripControlHost(view)
-            { AutoSize = false, Margin = Padding.Empty, Padding = Padding.Empty, Size = view.Size };
+            _view = new AdvMenuView(_items);
+            _host = new ToolStripControlHost(_view)
+            { AutoSize = false, Margin = Padding.Empty, Padding = Padding.Empty, Size = _view.Size };
 
             _dd = new ToolStripDropDown
             { Padding = Padding.Empty, AutoClose = true, AutoSize = false, DropShadowEnabled = false };
             _dd.Renderer = BlankRenderer.Instance;
-            _dd.Items.Add(host);
-            _dd.Size = view.Size;
+            _dd.Items.Add(_host);
 
-            using (var path = AdvGraphics.CreateRoundedRect(new Rectangle(Point.Empty, view.Size), new AdvCorners(8)))
-                _dd.Region = new Region(path);
-
-            view.ItemChosen += it => { Close(); it.PerformClick(); };
-            view.CloseRequested += Close;
+            _view.ItemChosen += it => { Close(); it.PerformClick(); };
+            _view.CloseRequested += Close;
+            _view.LayoutResized += SyncSizeToView;
             _dd.Closed += (s, e) =>
             {
                 var h = Closed;
@@ -289,23 +475,57 @@ namespace AdvancedControls.Controls
                 DisposeDropDown();
             };
 
+            SyncSizeToView();      // 크기·Region은 Show 전에 잡는다(원본 관례 — Show 후 리사이즈는 dd를 불안정하게 함)
             _dd.Show(screen);
-            view.Focus();
+            _view.Focus();
+        }
+
+        /// <summary>서브 칸이 열리고 닫혀 뷰 크기가 바뀌면 팝업 크기·Region·위치를 맞춘다.</summary>
+        private void SyncSizeToView()
+        {
+            if (_dd == null || _view == null) return;
+            var size = _view.Size;
+            _host.Size = size;
+            _dd.Size = size;
+
+            // 창 Region = 각 칸의 둥근 사각형 합집합. 원본과 같은 방식(GraphicsPath 하나로 모아 new Region)으로
+            // 만들어 Union/MakeEmpty 경로를 피한다. 이전 Region은 dd가 정리하므로 직접 해제하지 않는다.
+            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                foreach (var cb in _view.ColumnBounds)
+                    using (var cp = AdvGraphics.CreateRoundedRect(cb, new AdvCorners(8)))
+                        path.AddPath(cp, false);
+                _dd.Region = new Region(path);
+            }
+
+            // 서브 칸이 오른쪽/아래로 자라 화면을 벗어나면 전체를 밀어 넣는다(가장자리 근처 메뉴)
+            if (_dd.IsHandleCreated)
+            {
+                var wa = Screen.FromPoint(_dd.Location).WorkingArea;
+                int x = _dd.Left, y = _dd.Top;
+                if (x + size.Width > wa.Right) x = Math.Max(wa.Left, wa.Right - size.Width);
+                if (y + size.Height > wa.Bottom) y = Math.Max(wa.Top, wa.Bottom - size.Height);
+                if (x != _dd.Left || y != _dd.Top) _dd.Location = new Point(x, y);
+            }
         }
 
         /// <summary>열려 있으면 닫는다.</summary>
         public void Close()
         {
-            if (_dd != null && _dd.Visible) _dd.Close();
-            else DisposeDropDown();
+            if (_dd == null) return;
+            try
+            {
+                if (!_dd.IsDisposed && _dd.Visible) { _dd.Close(); return; }   // 정상 경로: Closed→DisposeDropDown
+            }
+            catch (ObjectDisposedException) { }   // dd 내부 핸들 상태가 어긋난 드문 경우는 폐기로 넘어간다
+            DisposeDropDown();
         }
 
         private void DisposeDropDown()
         {
             if (_dd == null) return;
-            var d = _dd; _dd = null;
-            if (d.Region != null) d.Region.Dispose();   // 대입한 둥근 Region을 명시적으로 해제(반복 개폐 시 HRGN 누수 방지)
-            d.Dispose();
+            var d = _dd; _dd = null; _host = null; _view = null;
+            d.Dispose();   // 창 Region은 dd.Dispose가 정리한다(직접 Region.Dispose하면 이중 해제로 힙 손상)
         }
 
         protected override void Dispose(bool disposing)
