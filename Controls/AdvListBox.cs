@@ -276,22 +276,12 @@ namespace AdvancedControls.Controls
         /// 컨트롤 전체를 둥근 모양으로 잘라 낸다. 테두리(및 그림자)는 OnPaint가 그리므로,
         /// 잘리지 않게 프레임보다 1px 넉넉히 잡는다. Elevated면 그림자가 잘리지 않도록 자르지 않는다.
         /// </summary>
+        private Rectangle _regionClip = Rectangle.Empty;   // 마지막으로 Region을 만든 클립(리사이즈 중 재생성 방지)
+
         private void ApplyRoundedRegion()
         {
-            var old = Region;
-
-            if (Styling.Elevated)
-            {
-                Region = null;
-            }
-            else
-            {
-                var clip = Rectangle.Inflate(FrameBounds, 1, 1);
-                using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
-                    Region = new Region(path);
-            }
-
-            if (old != null) old.Dispose();
+            var clip = Rectangle.Inflate(FrameBounds, 1, 1);
+            AdvGraphics.UpdateRoundedRegion(this, clip, EffectiveCorners, Styling.Elevated, ref _regionClip);
         }
 
         /// <summary>휠은 목록 어디에 있든 스크롤로 이어져야 한다.</summary>
@@ -329,7 +319,7 @@ namespace AdvancedControls.Controls
 
         protected override void OnResize(EventArgs e) { RefreshLayout(); base.OnResize(e); }
         protected override void OnFontChanged(EventArgs e) { RefreshLayout(); base.OnFontChanged(e); }
-        protected override void OnThemeChanged() { RefreshLayout(); base.OnThemeChanged(); }
+        protected override void OnThemeChanged() { _regionClip = Rectangle.Empty; RefreshLayout(); base.OnThemeChanged(); }
 
         protected override void OnEnabledChanged(EventArgs e)
         {

@@ -688,6 +688,34 @@ namespace AdvancedControls.Controls
             UpdateLoadingSpin();    // 숨겨지면 스피너 루프를 멈춘다
         }
 
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new ButtonAccessibleObject(this);
+        }
+
+        private sealed class ButtonAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvButton _owner;
+            public ButtonAccessibleObject(AdvButton owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.PushButton; } }
+            public override string DefaultAction { get { return "누르기"; } }
+            public override void DoDefaultAction() { _owner.PerformClick(); }
+
+            public override AccessibleStates State
+            {
+                get
+                {
+                    var s = base.State;
+                    if (!_owner.Enabled || _owner.IsLoading) s |= AccessibleStates.Unavailable;
+                    if (_owner.IsPressed) s |= AccessibleStates.Pressed;
+                    return s;
+                }
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)

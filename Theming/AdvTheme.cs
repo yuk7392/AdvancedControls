@@ -46,6 +46,11 @@ namespace AdvancedControls.Theming
 
         public Color DisabledFill { get; set; }
 
+        // 의미색 — 성공·경고·오류. 검증 상태(AdvTextBox)·다이얼로그 아이콘 등에 쓰며 테마별로 대비를 맞춘다.
+        public Color Success { get; set; }
+        public Color Warning { get; set; }
+        public Color Error { get; set; }
+
         /// <summary>
         /// 포커스 표시용 단색 링 색. 컴팩트·원형·다중 항목 컨트롤(닫기 버튼, 슬라이더, 페이지네이션,
         /// 리스트 그룹, 브레드크럼, 아코디언 머리글)이 항목/요소에 딱 맞는 링을 그릴 때 쓴다.
@@ -127,6 +132,9 @@ namespace AdvancedControls.Theming
                 OnAccent = ColorTranslator.FromHtml("#FFFFFF"),
                 AccentGradientEnd = Color.Empty,
                 DisabledFill = ColorTranslator.FromHtml("#F3F4F6"),
+                Success = ColorTranslator.FromHtml("#16A34A"),
+                Warning = ColorTranslator.FromHtml("#D97706"),
+                Error = ColorTranslator.FromHtml("#DC2626"),
                 FocusRing = ColorTranslator.FromHtml("#93C5FD"),
                 Corners = new AdvCorners(4),
                 BorderWidth = 1,
@@ -163,6 +171,9 @@ namespace AdvancedControls.Theming
                 OnAccent = ColorTranslator.FromHtml("#FFFFFF"),
                 AccentGradientEnd = Color.Empty,
                 DisabledFill = ColorTranslator.FromHtml("#374151"),
+                Success = ColorTranslator.FromHtml("#22C55E"),
+                Warning = ColorTranslator.FromHtml("#F59E0B"),
+                Error = ColorTranslator.FromHtml("#EF4444"),
                 FocusRing = ColorTranslator.FromHtml("#60A5FA"),
                 Corners = new AdvCorners(4),
                 BorderWidth = 1,

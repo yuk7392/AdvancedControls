@@ -13,6 +13,7 @@ namespace AdvancedControls.Controls
     [ToolboxItem(true)]
     [Description("드래그로 크기를 조절하는 분할 컨테이너입니다.")]
     [DefaultProperty("SplitterDistance")]
+    [Designer(typeof(Design.AdvSplitContainerDesigner))]
     public class AdvSplitContainer : AdvContainerBase
     {
         private readonly Panel _panel1 = new Panel();
@@ -87,6 +88,7 @@ namespace AdvancedControls.Controls
                 int before = _distance;
                 _distance = value;
                 LayoutPanels();                 // _distance를 유효 범위로 클램프
+                Invalidate();                   // 막대·그립을 다시 그린다(드래그 외 경로·디자이너에서도 리페인트되게)
                 if (_distance != before) OnSplitterMoved();   // 클램프 후 실제로 움직였을 때만 통지
             }
         }

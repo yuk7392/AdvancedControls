@@ -74,6 +74,31 @@ namespace AdvancedControls.Controls
 
                 TextRenderer.DrawText(g, Placeholder, Font, ClientRectangle, PlaceholderColor, flags);
             }
+
+            /// <summary>바깥 AdvTextBox. 포커스가 이 내부 편집창에 오므로 접근성 이름을 여기서 가져온다.</summary>
+            public AdvTextBox Host;
+
+            protected override AccessibleObject CreateAccessibilityInstance()
+            {
+                return new PlaceholderAccessibleObject(this);
+            }
+
+            private sealed class PlaceholderAccessibleObject : ControlAccessibleObject
+            {
+                private readonly PlaceholderTextBox _tb;
+                public PlaceholderAccessibleObject(PlaceholderTextBox tb) : base(tb) { _tb = tb; }
+
+                public override string Name
+                {
+                    get
+                    {
+                        var host = _tb.Host;
+                        if (host != null && !string.IsNullOrEmpty(host.AccessibleName)) return host.AccessibleName;
+                        return _tb.Placeholder;   // 이름이 없으면 안내 문구라도 읽어 준다
+                    }
+                    set { base.Name = value; }
+                }
+            }
         }
 
         private readonly PlaceholderTextBox _inner;
@@ -93,6 +118,7 @@ namespace AdvancedControls.Controls
         public AdvTextBox()
         {
             _inner = new PlaceholderTextBox();
+            _inner.Host = this;
             _inner.BorderStyle = BorderStyle.None;
             _inner.TabStop = false;          // 탭 순서는 바깥 컨트롤이 갖는다
             _inner.AutoSize = false;
@@ -350,14 +376,14 @@ namespace AdvancedControls.Controls
             set { if (_validation == value) return; _validation = value; LayoutInner(); Invalidate(); }
         }
 
-        /// <summary>검증 상태별 색. 테마와 무관한 표준 의미색이다(초록·주황·빨강).</summary>
-        private static Color ValidationColor(AdvValidationState s)
+        /// <summary>검증 상태별 색. 테마의 의미색(성공·경고·오류)을 따라 라이트/다크에서 대비가 맞는다.</summary>
+        private static Color ValidationColor(AdvValidationState s, AdvTheme theme)
         {
             switch (s)
             {
-                case AdvValidationState.Success: return ColorTranslator.FromHtml("#16A34A");
-                case AdvValidationState.Warning: return ColorTranslator.FromHtml("#D97706");
-                case AdvValidationState.Error:   return ColorTranslator.FromHtml("#DC2626");
+                case AdvValidationState.Success: return theme.Success;
+                case AdvValidationState.Warning: return theme.Warning;
+                case AdvValidationState.Error:   return theme.Error;
                 default: return Color.Empty;
             }
         }
@@ -486,7 +512,7 @@ namespace AdvancedControls.Controls
 
         private void DrawValidationGlyph(Graphics g, AdvValidationState state)
         {
-            Color c = ValidationColor(state);
+            Color c = ValidationColor(state, EffectiveTheme);
             var r = _validationRect;
             var box = Rectangle.Inflate(r, -r.Width / 5, -r.Height / 5);
             using (var pen = new Pen(c, 1.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
@@ -598,7 +624,7 @@ namespace AdvancedControls.Controls
 
             Color border;
             if (!Enabled) border = theme.Border;
-            else if (_validation != AdvValidationState.None) border = ValidationColor(_validation);
+            else if (_validation != AdvValidationState.None) border = ValidationColor(_validation, theme);
             else if (ShowsFocusVisual) border = theme.BorderFocus;
             else border = AdvGraphics.Blend(theme.Border, theme.BorderHover, HoverAmount);
 

@@ -107,7 +107,7 @@ namespace AdvancedControls.Controls
 
         private int _rowHeight = 30;
         private int _headerHeight = 34;
-        private const int ScrollSize = 11;          // 스크롤바 두께
+        private const int ScrollSize = 10;          // 스크롤바 두께(AdvScrollBar.DefaultWidth와 통일)
         private const int ResizeGrip = 4;           // 열 경계 잡는 폭
         private const int MinThumb = 24;
         private const int HScrollStep = 48;         // 가로 방향키/Shift+휠 한 번의 이동 폭
@@ -478,12 +478,7 @@ namespace AdvancedControls.Controls
         {
             if (!IsHandleCreated) return;
             var clip = Rectangle.Inflate(FrameBounds, 1, 1);
-            if (Region != null && clip == _regionClip) return;   // 크기·위치가 그대로면 GDI Region을 다시 만들지 않는다
-            _regionClip = clip;
-            var old = Region;
-            using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
-                Region = new Region(path);
-            if (old != null) old.Dispose();
+            AdvGraphics.UpdateRoundedRegion(this, clip, EffectiveCorners, false, ref _regionClip);
         }
 
         protected override void OnHandleCreated(EventArgs e)

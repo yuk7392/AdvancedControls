@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 using AdvancedControls.Theming;
 
 namespace AdvancedControls.Rendering
@@ -192,6 +193,39 @@ namespace AdvancedControls.Rendering
                 brush.Color = Color.FromArgb(alpha, shadow.Color);
                 g.FillPath(brush, path);
             }
+        }
+
+        /// <summary>
+        /// 컨트롤에 둥근 모서리 <see cref="Region"/> 클립을 적용·갱신한다. 사각 자식이 둥근 코너 밖으로
+        /// 튀지 않게 컨테이너·목록·그리드가 공통으로 쓴다(예전엔 컨트롤마다 복제돼 캐시 가드가 제각각이었다).
+        /// clip이 직전과 같으면 GDI Region을 다시 만들지 않고, skip이면 클립을 없앤다.
+        /// 이전 Region은 반드시 Dispose한다(GDI 누수 방지).
+        /// </summary>
+        /// <param name="skip">클립하지 않을 조건. Elevated(그림자가 잘림)·사각 도킹(반경 0) 등은 호출자가 판단한다.</param>
+        /// <param name="cache">직전에 Region을 만든 clip. 모서리·테마가 바뀌어 크기가 같아도 다시 만들어야 하면
+        /// 호출자가 <see cref="Rectangle.Empty"/>로 초기화해 넘긴다.</param>
+        public static void UpdateRoundedRegion(Control control, Rectangle clip, AdvCorners corners,
+                                               bool skip, ref Rectangle cache)
+        {
+            if (skip)
+            {
+                if (control.Region != null)
+                {
+                    var prev = control.Region;
+                    control.Region = null;
+                    prev.Dispose();
+                }
+                cache = Rectangle.Empty;
+                return;
+            }
+
+            if (control.Region != null && clip == cache) return;   // 크기·위치가 그대로면 재생성하지 않는다
+
+            cache = clip;
+            var old = control.Region;
+            using (var path = CreateRoundedRect(clip, corners))
+                control.Region = new Region(path);
+            if (old != null) old.Dispose();
         }
 
         /// <summary>두 색 사이를 t(0~1)로 보간한다. 호버 전환 애니메이션에 쓴다.</summary>

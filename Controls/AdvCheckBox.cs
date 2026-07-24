@@ -189,6 +189,20 @@ namespace AdvancedControls.Controls
         {
             return new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
         }
+
+        /// <summary>3-상태 체크박스는 '설정 안 함'을 접근성 Mixed 상태로 알린다.</summary>
+        protected override AccessibleStates AccessibleCheckedState
+        {
+            get
+            {
+                switch (_checkState)
+                {
+                    case CheckState.Checked: return AccessibleStates.Checked;
+                    case CheckState.Indeterminate: return AccessibleStates.Mixed;
+                    default: return AccessibleStates.None;
+                }
+            }
+        }
     }
 
     /// <summary>AdvCheckBox가 고유하게 추가한 속성. 공통 속성은 AdvToggleOptions에서 물려받는다.</summary>

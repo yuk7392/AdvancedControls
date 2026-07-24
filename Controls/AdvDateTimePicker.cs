@@ -377,6 +377,39 @@ namespace AdvancedControls.Controls
             base.OnThemeChanged();
         }
 
+        // ── 접근성 ────────────────────────────────────────────────────
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new DatePickerAccessibleObject(this);
+        }
+
+        private sealed class DatePickerAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvDateTimePicker _owner;
+            public DatePickerAccessibleObject(AdvDateTimePicker owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.ComboBox; } }
+            public override string Value { get { return _owner.Text; } set { } }
+
+            public override AccessibleStates State
+            {
+                get
+                {
+                    var s = base.State | AccessibleStates.HasPopup;
+                    s |= _owner.IsDroppedDown ? AccessibleStates.Expanded : AccessibleStates.Collapsed;
+                    if (!_owner.Enabled) s |= AccessibleStates.Unavailable;
+                    return s;
+                }
+            }
+
+            public override string DefaultAction { get { return _owner.IsDroppedDown ? "접기" : "펼치기"; } }
+            public override void DoDefaultAction()
+            {
+                if (_owner.IsDroppedDown) _owner.HideDropDown(); else _owner.ShowDropDown();
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing && _popup != null)

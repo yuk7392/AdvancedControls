@@ -271,22 +271,13 @@ namespace AdvancedControls
         /// 컨테이너 전체를 둥근 모양으로 잘라 낸다. 테두리·그림자는 OnPaint가 그리므로
         /// 잘리지 않게 프레임보다 1px 넉넉히 잡고, Elevated면 그림자가 잘리지 않도록 자르지 않는다.
         /// </summary>
+        private Rectangle _regionClip = Rectangle.Empty;   // 마지막으로 Region을 만든 클립(리사이즈 중 재생성 방지)
+
         private void ApplyRoundedRegion()
         {
             if (!IsHandleCreated) return;
-
-            var old = Region;
-            if (_appearance.Elevated)
-            {
-                Region = null;
-            }
-            else
-            {
-                var clip = Rectangle.Inflate(FrameBounds, 1, 1);
-                using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
-                    Region = new Region(path);
-            }
-            if (old != null) old.Dispose();
+            var clip = Rectangle.Inflate(FrameBounds, 1, 1);
+            AdvGraphics.UpdateRoundedRegion(this, clip, EffectiveCorners, _appearance.Elevated, ref _regionClip);
         }
 
         protected override void OnResize(EventArgs e)
@@ -303,7 +294,8 @@ namespace AdvancedControls
         protected virtual void OnThemeChanged()
         {
             BackColor = EffectiveTheme.Surface;
-            ApplyRoundedRegion();      // 테마가 바뀌면 모서리 반경도 달라질 수 있다
+            _regionClip = Rectangle.Empty;   // 테마가 바뀌면 크기가 같아도 모서리가 달라지므로 강제 재생성
+            ApplyRoundedRegion();
         }
 
         protected override void OnHandleCreated(EventArgs e)

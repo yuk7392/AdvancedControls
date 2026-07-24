@@ -440,6 +440,47 @@ namespace AdvancedControls.Controls
             _checkAnim.SetImmediate(_checked ? 1f : 0f);
         }
 
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        /// <summary>스크린리더에 알릴 역할. 체크박스는 CheckButton(기본), 라디오는 RadioButton으로 재정의한다.</summary>
+        protected virtual AccessibleRole DefaultAccessibleRole
+        {
+            get { return AccessibleRole.CheckButton; }
+        }
+
+        /// <summary>체크 상태를 접근성 상태로 알린다. 체크박스는 Indeterminate를 Mixed로 재정의한다.</summary>
+        protected virtual AccessibleStates AccessibleCheckedState
+        {
+            get { return Checked ? AccessibleStates.Checked : AccessibleStates.None; }
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new ToggleAccessibleObject(this);
+        }
+
+        private sealed class ToggleAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvToggleBase _owner;
+            public ToggleAccessibleObject(AdvToggleBase owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return _owner.DefaultAccessibleRole; } }
+
+            public override AccessibleStates State
+            {
+                get
+                {
+                    var s = base.State;
+                    s |= _owner.AccessibleCheckedState;
+                    if (!_owner.Enabled) s |= AccessibleStates.Unavailable;
+                    return s;
+                }
+            }
+
+            public override string DefaultAction { get { return _owner.Checked ? "선택 해제" : "선택"; } }
+            public override void DoDefaultAction() { _owner.PerformClick(); }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)

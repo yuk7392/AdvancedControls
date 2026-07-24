@@ -293,6 +293,63 @@ namespace AdvancedControls.Controls
             InvalidateLayout();
             base.OnThemeChanged();
         }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new BreadcrumbAccessibleObject(this);
+        }
+
+        private sealed class BreadcrumbAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvBreadcrumb _owner;
+            public BreadcrumbAccessibleObject(AdvBreadcrumb owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.Grouping; } }
+            public override int GetChildCount() { return _owner._items.Count; }
+            public override AccessibleObject GetChild(int index)
+            {
+                return index >= 0 && index < _owner._items.Count
+                    ? new LinkAccessibleObject(_owner, index) : null;
+            }
+
+            private sealed class LinkAccessibleObject : AccessibleObject
+            {
+                private readonly AdvBreadcrumb _o;
+                private readonly int _i;
+                public LinkAccessibleObject(AdvBreadcrumb o, int i) { _o = o; _i = i; }
+
+                private bool IsLast { get { return _i == _o._items.Count - 1; } }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role { get { return IsLast ? AccessibleRole.StaticText : AccessibleRole.Link; } }
+                public override string Name { get { return _i < _o._items.Count ? _o._items[_i] : null; } }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var s = AccessibleStates.None;
+                        if (!_o.Enabled) s |= AccessibleStates.Unavailable;
+                        if (!IsLast) s |= AccessibleStates.Focusable | AccessibleStates.Selectable;
+                        return s;
+                    }
+                }
+
+                public override Rectangle Bounds
+                {
+                    get
+                    {
+                        if (_o._itemRects.Count != _o._items.Count) _o.RebuildLayout();
+                        return _i < _o._itemRects.Count ? _o.RectangleToScreen(_o._itemRects[_i]) : Rectangle.Empty;
+                    }
+                }
+
+                public override string DefaultAction { get { return IsLast ? null : "이동"; } }
+                public override void DoDefaultAction() { if (!IsLast) _o.ActivateLink(_i); }
+            }
+        }
     }
 
     /// <summary>AdvBreadcrumb가 추가한 속성.</summary>

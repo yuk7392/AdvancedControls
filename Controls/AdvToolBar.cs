@@ -154,23 +154,19 @@ namespace AdvancedControls.Controls
         /// 모서리 반경(Styling.Radius)이 0이면 풀폭 도킹 사각 바(아래 구분선만),
         /// 0보다 크면 둥근 '플로팅 필'(전체 둥근 테두리)로 그린다. 둥글면 아래 Region으로 코너를 자른다.
         /// </summary>
+        private Rectangle _regionClip = Rectangle.Empty;   // 마지막으로 Region을 만든 클립(리사이즈 중 재생성 방지)
+
         private void ApplyRoundedRegion()
         {
             if (!IsHandleCreated) return;
-            var old = Region;
-            if (EffectiveCorners.IsZero) Region = null;
-            else
-            {
-                var clip = Rectangle.Inflate(FrameBounds, 1, 1);
-                using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
-                    Region = new Region(path);
-            }
-            if (old != null) old.Dispose();
+            var clip = Rectangle.Inflate(FrameBounds, 1, 1);
+            // 반경 0(사각 도킹 바)이면 클립하지 않는다 — 아래 구분선만 그린다.
+            AdvGraphics.UpdateRoundedRegion(this, clip, EffectiveCorners, EffectiveCorners.IsZero, ref _regionClip);
         }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyRoundedRegion(); }
         protected override void OnResize(EventArgs e) { base.OnResize(e); ApplyRoundedRegion(); }
-        protected override void OnThemeChanged() { base.OnThemeChanged(); ApplyRoundedRegion(); }
+        protected override void OnThemeChanged() { base.OnThemeChanged(); _regionClip = Rectangle.Empty; ApplyRoundedRegion(); }
 
         protected override void OnPaint(PaintEventArgs e)
         {

@@ -22,6 +22,28 @@ namespace AdvancedControls.Controls
         public AdvCloseButton()
         {
             TabStop = true;
+            AccessibleName = "닫기";   // X 아이콘뿐이라 스크린리더가 읽을 이름을 준다(소비자가 덮어쓸 수 있음)
+        }
+
+        /// <summary>코드·접근성에서 클릭과 같은 동작을 일으킨다.</summary>
+        public void PerformClick()
+        {
+            if (Enabled && Visible) OnClick(EventArgs.Empty);
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new CloseButtonAccessibleObject(this);
+        }
+
+        private sealed class CloseButtonAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvCloseButton _owner;
+            public CloseButtonAccessibleObject(AdvCloseButton owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.PushButton; } }
+            public override string DefaultAction { get { return "누르기"; } }
+            public override void DoDefaultAction() { _owner.PerformClick(); }
         }
 
         protected override Size DefaultSize

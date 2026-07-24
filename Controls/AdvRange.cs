@@ -420,6 +420,32 @@ namespace AdvancedControls.Controls
             base.OnThemeChanged();
         }
 
+        // ── 접근성 ────────────────────────────────────────────────────
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new RangeAccessibleObject(this);
+        }
+
+        private sealed class RangeAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvRange _owner;
+            public RangeAccessibleObject(AdvRange owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.Slider; } }
+            public override string Value { get { return _owner.Value.ToString(); } set { } }
+
+            public override AccessibleStates State
+            {
+                get
+                {
+                    var s = base.State;
+                    if (!_owner.Enabled) s |= AccessibleStates.Unavailable;
+                    return s;
+                }
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing && _valueTip != null)

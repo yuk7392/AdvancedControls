@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Windows.Forms;
+using AdvancedControls.Controls.Internal;
 using AdvancedControls.Rendering;
 using AdvancedControls.Theming;
 
@@ -53,7 +54,7 @@ namespace AdvancedControls.Controls
 
         public AdvNumericUpDown()
         {
-            _editor = new TextBox();
+            _editor = new AdvInnerTextBox { Host = this };
             _editor.BorderStyle = BorderStyle.None;
             _editor.TabStop = false;
             _editor.AutoSize = false;

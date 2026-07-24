@@ -69,7 +69,7 @@ namespace AdvancedControls.Controls
 
         private int _rowHeight = 26;
         private int _indent = 18;
-        private const int ScrollSize = 11;
+        private const int ScrollSize = 10;   // AdvScrollBar.DefaultWidth와 통일
         private const int MinThumb = 24;
         private const int ChevronBox = 16;
 
@@ -243,12 +243,7 @@ namespace AdvancedControls.Controls
         {
             if (!IsHandleCreated) return;
             var clip = Rectangle.Inflate(FrameBounds, 1, 1);
-            if (Region != null && clip == _regionClip) return;   // 크기·위치가 그대로면 다시 만들지 않는다
-            _regionClip = clip;
-            var old = Region;
-            using (var path = AdvGraphics.CreateRoundedRect(clip, EffectiveCorners))
-                Region = new Region(path);
-            if (old != null) old.Dispose();
+            AdvGraphics.UpdateRoundedRegion(this, clip, EffectiveCorners, false, ref _regionClip);
         }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyRoundedRegion(); }

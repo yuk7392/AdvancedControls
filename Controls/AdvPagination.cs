@@ -411,6 +411,81 @@ namespace AdvancedControls.Controls
             RebuildCells();
             base.OnThemeChanged();
         }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new PaginationAccessibleObject(this);
+        }
+
+        private sealed class PaginationAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvPagination _owner;
+            public PaginationAccessibleObject(AdvPagination owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.Grouping; } }
+
+            public override int GetChildCount()
+            {
+                if (_owner._cells.Count == 0) _owner.RebuildCells();
+                return _owner._cells.Count;
+            }
+
+            public override AccessibleObject GetChild(int index)
+            {
+                if (_owner._cells.Count == 0) _owner.RebuildCells();
+                return index >= 0 && index < _owner._cells.Count
+                    ? new CellAccessibleObject(_owner, index) : null;
+            }
+
+            private sealed class CellAccessibleObject : AccessibleObject
+            {
+                private readonly AdvPagination _o;
+                private readonly int _i;
+                public CellAccessibleObject(AdvPagination o, int i) { _o = o; _i = i; }
+
+                private Cell C { get { return _o._cells[_i]; } }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role
+                {
+                    get { return C.Kind == CellKind.Ellipsis ? AccessibleRole.StaticText : AccessibleRole.PushButton; }
+                }
+
+                public override string Name
+                {
+                    get
+                    {
+                        switch (C.Kind)
+                        {
+                            case CellKind.Prev: return "이전 페이지";
+                            case CellKind.Next: return "다음 페이지";
+                            case CellKind.Ellipsis: return "생략";
+                            default: return C.Page.ToString();
+                        }
+                    }
+                }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var c = C;
+                        var s = AccessibleStates.None;
+                        if (!c.Enabled) s |= AccessibleStates.Unavailable;
+                        else if (c.Kind == CellKind.Page && c.Page == _o._currentPage) s |= AccessibleStates.Checked;
+                        else if (c.Kind != CellKind.Ellipsis) s |= AccessibleStates.Focusable | AccessibleStates.Selectable;
+                        return s;
+                    }
+                }
+
+                public override Rectangle Bounds { get { return _o.RectangleToScreen(C.Bounds); } }
+
+                public override string DefaultAction { get { return (C.Enabled && C.Kind != CellKind.Ellipsis) ? "이동" : null; } }
+                public override void DoDefaultAction() { _o.ActivateCell(_i); }
+            }
+        }
     }
 
     /// <summary>AdvPagination이 추가한 속성.</summary>

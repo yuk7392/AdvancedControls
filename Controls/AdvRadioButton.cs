@@ -12,6 +12,12 @@ namespace AdvancedControls.Controls
     [Description("테마를 따르는 라디오 버튼입니다. 같은 부모 안의 라디오끼리 한 그룹이 됩니다.")]
     public class AdvRadioButton : AdvToggleBase
     {
+        /// <summary>스크린리더에 라디오 버튼으로 알린다(체크박스가 아니라).</summary>
+        protected override AccessibleRole DefaultAccessibleRole
+        {
+            get { return AccessibleRole.RadioButton; }
+        }
+
         /// <summary>이미 켜져 있으면 다시 눌러도 꺼지지 않는다. 표준 RadioButton과 같다.</summary>
         protected override void Toggle()
         {

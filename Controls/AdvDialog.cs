@@ -248,9 +248,9 @@ namespace AdvancedControls.Controls
         {
             switch (_icon)
             {
-                case AdvDialogIcon.Success: return Color.FromArgb(22, 163, 74);
-                case AdvDialogIcon.Warning: return Color.FromArgb(217, 119, 6);
-                case AdvDialogIcon.Error: return Color.FromArgb(220, 38, 38);
+                case AdvDialogIcon.Success: return theme.Success;
+                case AdvDialogIcon.Warning: return theme.Warning;
+                case AdvDialogIcon.Error: return theme.Error;
                 default: return theme.Accent;   // Info·Question
             }
         }

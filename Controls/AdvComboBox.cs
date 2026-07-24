@@ -534,7 +534,7 @@ namespace AdvancedControls.Controls
             {
                 if (_editor != null) return;
 
-                _editor = new TextBox();
+                _editor = new AdvInnerTextBox { Host = this };
                 _editor.BorderStyle = BorderStyle.None;
                 _editor.TabStop = false;
                 _editor.AutoSize = false;
@@ -938,6 +938,39 @@ namespace AdvancedControls.Controls
             base.OnHandleCreated(e);
             ApplyEditorAppearance();
             LayoutEditor();
+        }
+
+        // ── 접근성 ────────────────────────────────────────────────────
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new ComboAccessibleObject(this);
+        }
+
+        private sealed class ComboAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvComboBox _owner;
+            public ComboAccessibleObject(AdvComboBox owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.ComboBox; } }
+            public override string Value { get { return _owner.Text; } set { } }
+
+            public override AccessibleStates State
+            {
+                get
+                {
+                    var s = base.State | AccessibleStates.HasPopup;
+                    s |= _owner.IsDroppedDown ? AccessibleStates.Expanded : AccessibleStates.Collapsed;
+                    if (!_owner.Enabled) s |= AccessibleStates.Unavailable;
+                    return s;
+                }
+            }
+
+            public override string DefaultAction { get { return _owner.IsDroppedDown ? "접기" : "펼치기"; } }
+            public override void DoDefaultAction()
+            {
+                if (_owner.IsDroppedDown) _owner.HideDropDown(); else _owner.ShowDropDown();
+            }
         }
 
         protected override void Dispose(bool disposing)
