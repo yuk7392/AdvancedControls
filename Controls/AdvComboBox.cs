@@ -368,30 +368,13 @@ namespace AdvancedControls.Controls
             DetachBoundList();
 
             _dataSource = value;
-            _boundList = ResolveList(value);
+            _boundList = AdvDataBinding.ResolveList(value);
 
             var bindingList = _boundList as IBindingList;
             if (bindingList != null) bindingList.ListChanged += BoundListChanged;
 
             ResolveMembers();
             ReloadFromBoundList();
-        }
-
-        /// <summary>
-        /// DataTable은 IList가 아니라 IListSource라서 GetList()를 한 번 거쳐야 한다.
-        /// </summary>
-        private static IList ResolveList(object source)
-        {
-            if (source == null) return null;
-
-            var listSource = source as IListSource;
-            if (listSource != null) return listSource.GetList();
-
-            var list = source as IList;
-            if (list != null) return list;
-
-            throw new ArgumentException(
-                "DataSource는 IList 또는 IListSource여야 합니다. 받은 형식: " + source.GetType().FullName);
         }
 
         private void DetachBoundList()

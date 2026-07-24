@@ -1,10 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Windows.Forms;
+using AdvancedControls.Controls.Internal;
 using AdvancedControls.Rendering;
 using AdvancedControls.Theming;
 
@@ -39,6 +41,12 @@ namespace AdvancedControls.Controls
         public HorizontalAlignment Alignment { get; set; }
         public bool Sortable { get; set; }
 
+        /// <summary>
+        /// 바인딩 시 이 열이 표시할 원본 속성(컬럼) 이름.
+        /// 비우면 <see cref="Header"/>와 같은 이름의 속성을 찾는다.
+        /// </summary>
+        public string DataPropertyName { get; set; }
+
         /// <summary>선택 체크박스 열이면 true. 텍스트 대신 체크박스를 그리고 클릭하면 행 선택을 토글한다.</summary>
         internal bool IsCheckBox { get; set; }
 
@@ -48,6 +56,7 @@ namespace AdvancedControls.Controls
             Width = width;      // 세터가 하한 클램프
             Alignment = alignment;
             Sortable = true;
+            DataPropertyName = string.Empty;
         }
     }
 
@@ -135,6 +144,13 @@ namespace AdvancedControls.Controls
         private bool _readOnly = true;
         private TextBox _editor;
         private int _editRow = -1, _editCol = -1;
+
+        // 데이터 바인딩
+        private object _dataSource;
+        private IList _boundList;
+        private PropertyDescriptor[] _boundProps;   // 데이터 열 순서(DataIndex)별 원본 속성. 못 찾은 열은 null
+        private bool _autoColumns;                  // 열을 바인딩이 자동 생성했는지(원본 교체 시 다시 만든다)
+        private const int BoundColumnWidth = 100;   // 자동 생성 열의 기본 폭
 
         // 매 그리기 직전에 계산되는 레이아웃 값
         private bool _vBar, _hBar;
@@ -268,11 +284,12 @@ namespace AdvancedControls.Controls
 
         // ── 데이터 API ────────────────────────────────────────────────
 
-        /// <summary>열을 추가한다.</summary>
+        /// <summary>열을 추가한다. 바인딩 중이면 새 열을 원본 속성에 다시 매핑하고 재조회한다.</summary>
         public AdvGridColumn AddColumn(string header, int width, HorizontalAlignment alignment)
         {
             var col = new AdvGridColumn(header, width, alignment);
             _columns.Add(col);
+            RebindAfterColumnChange();
             Invalidate();
             return col;
         }
@@ -296,6 +313,7 @@ namespace AdvancedControls.Controls
         /// <summary>행을 추가한다. 셀 개수가 열 수와 달라도 남거나 빈 칸으로 처리한다.</summary>
         public void AddRow(params string[] cells)
         {
+            ThrowIfBound();
             _rows.Add(new GridRow(cells ?? new string[0]));
             ClampScroll();
             Invalidate();
@@ -304,6 +322,7 @@ namespace AdvancedControls.Controls
         /// <summary>행 하나를 지운다. 선택된 행이었으면 SelectionChanged를 올린다.</summary>
         public void RemoveRowAt(int index)
         {
+            ThrowIfBound();
             if (index < 0 || index >= _rows.Count) return;
             bool wasSelected = _rows[index].Selected;
             _rows.RemoveAt(index);
@@ -330,6 +349,7 @@ namespace AdvancedControls.Controls
         /// <summary>한 셀 값을 갱신한다(전체 재구성 없이).</summary>
         public void SetCell(int row, int col, string value)
         {
+            ThrowIfBound();
             if (row < 0 || row >= _rows.Count) return;
             int di = DataIndex(col);
             if (di < 0) return;
@@ -342,11 +362,23 @@ namespace AdvancedControls.Controls
         /// <summary>모든 행을 지운다(열은 유지).</summary>
         public void ClearRows()
         {
+            ThrowIfBound();
             _rows.Clear();
             _hoverRow = _anchor = -1;
             _scrollY = 0;
             Invalidate();
             RaiseSelectionChanged();
+        }
+
+        /// <summary>
+        /// 바인딩 중에 직접 행을 바꾸면 다음 새로고침에서 조용히 사라진다.
+        /// 조용히 무시하지 말고 바로 알린다.
+        /// </summary>
+        private void ThrowIfBound()
+        {
+            if (_boundList != null)
+                throw new InvalidOperationException(
+                    "DataSource가 지정된 동안에는 행을 직접 바꿀 수 없습니다. 원본 목록을 수정하세요.");
         }
 
         [Browsable(false)]
@@ -398,6 +430,182 @@ namespace AdvancedControls.Controls
             if (di < 0) return string.Empty;
             var cells = _rows[row].Cells;
             return di < cells.Length ? (cells[di] ?? string.Empty) : string.Empty;
+        }
+
+        // ── 데이터 바인딩 ─────────────────────────────────────────────
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(null)]
+        [RefreshProperties(RefreshProperties.Repaint)]
+        [AttributeProvider(typeof(IListSource))]
+        [Description("행을 채울 데이터 원본입니다. DataTable, BindingSource, IList를 받습니다.")]
+        public object DataSource
+        {
+            get { return _dataSource; }
+            set
+            {
+                if (ReferenceEquals(_dataSource, value)) return;
+                SetDataSource(value);
+            }
+        }
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool IsBound
+        {
+            get { return _boundList != null; }
+        }
+
+        private void SetDataSource(object value)
+        {
+            DetachBoundList();
+
+            _dataSource = value;
+            _boundList = AdvDataBinding.ResolveList(value);
+
+            var bindingList = _boundList as IBindingList;
+            if (bindingList != null) bindingList.ListChanged += BoundListChanged;
+
+            // 열 구성이 바뀌므로 옛 정렬 상태는 무의미하다
+            _sortCol = -1;
+            _sortAsc = true;
+
+            if (_boundList == null)
+            {
+                // 바인딩 해제: 자동 생성했던 열과 스냅숏 행을 지운다(직접 만든 열은 남긴다)
+                if (_autoColumns) { _columns.RemoveAll(c => !c.IsCheckBox); _autoColumns = false; }
+                _boundProps = null;
+                ReloadBoundRows();
+                return;
+            }
+
+            BindColumns();
+            ReloadBoundRows();
+        }
+
+        private void DetachBoundList()
+        {
+            var bindingList = _boundList as IBindingList;
+            if (bindingList != null) bindingList.ListChanged -= BoundListChanged;
+
+            _boundList = null;
+        }
+
+        private void BoundListChanged(object sender, ListChangedEventArgs e)
+        {
+            ReloadBoundRows();
+        }
+
+        /// <summary>
+        /// 열을 원본 속성에 잇는다. 데이터 열이 하나도 없으면(또는 이전 바인딩이 자동으로
+        /// 만든 열이면) 속성마다 열을 하나씩 자동 생성한다 — 숫자 속성은 우측 정렬.
+        /// 직접 만든 열은 DataPropertyName(비어 있으면 Header)과 같은 이름의 속성에
+        /// 매핑한다. 이름이 안 잡히는 열은 빈 칸으로 남는다.
+        /// </summary>
+        private void BindColumns()
+        {
+            var props = ListBindingHelper.GetListItemProperties((object)_boundList ?? _dataSource);
+
+            bool hasDataColumn = false;
+            foreach (var c in _columns) if (!c.IsCheckBox) { hasDataColumn = true; break; }
+
+            if (!hasDataColumn || _autoColumns)
+            {
+                _columns.RemoveAll(c => !c.IsCheckBox);
+                if (props != null)
+                {
+                    foreach (PropertyDescriptor p in props)
+                    {
+                        var align = IsNumericType(p.PropertyType)
+                            ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+                        _columns.Add(new AdvGridColumn(p.Name, BoundColumnWidth, align)
+                        { DataPropertyName = p.Name });
+                    }
+                }
+                _autoColumns = true;
+            }
+
+            MapBoundColumns(props);
+        }
+
+        /// <summary>데이터 열 순서(DataIndex)대로 원본 속성 기술자를 잡아 둔다.</summary>
+        private void MapBoundColumns(PropertyDescriptorCollection props)
+        {
+            var list = new List<PropertyDescriptor>();
+            foreach (var c in _columns)
+            {
+                if (c.IsCheckBox) continue;
+                string name = string.IsNullOrEmpty(c.DataPropertyName) ? c.Header : c.DataPropertyName;
+                list.Add(props != null && !string.IsNullOrEmpty(name) ? props.Find(name, true) : null);
+            }
+            _boundProps = list.ToArray();
+        }
+
+        /// <summary>바인딩 중 열이 추가되면 매핑을 다시 잡고 재조회한다.</summary>
+        private void RebindAfterColumnChange()
+        {
+            if (_boundList == null) return;
+            MapBoundColumns(ListBindingHelper.GetListItemProperties((object)_boundList ?? _dataSource));
+            ReloadBoundRows();
+        }
+
+        private static bool IsNumericType(Type t)
+        {
+            if (t == null) return false;
+            t = Nullable.GetUnderlyingType(t) ?? t;
+            switch (Type.GetTypeCode(t))
+            {
+                case TypeCode.SByte:
+                case TypeCode.Byte:
+                case TypeCode.Int16:
+                case TypeCode.UInt16:
+                case TypeCode.Int32:
+                case TypeCode.UInt32:
+                case TypeCode.Int64:
+                case TypeCode.UInt64:
+                case TypeCode.Single:
+                case TypeCode.Double:
+                case TypeCode.Decimal:
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 원본을 통째로 다시 읽어 셀 스냅숏을 만든다. 항목을 하나씩 옮기면 속성이 늘었을 때
+        /// 조용히 누락되므로 재조회로 맞춘다. 행 객체가 새로 만들어지므로 선택은 유지되지
+        /// 않는다(있었으면 SelectionChanged로 알린다). 정렬 열이 지정돼 있으면 같은 기준으로
+        /// 다시 정렬해 머리글 화살표와 실제 순서를 일치시킨다.
+        /// </summary>
+        private void ReloadBoundRows()
+        {
+            CancelEdit();
+
+            bool hadSelection = false;
+            foreach (var r in _rows) if (r.Selected) { hadSelection = true; break; }
+
+            _rows.Clear();
+            if (_boundList != null && _boundProps != null)
+            {
+                int n = _boundProps.Length;
+                foreach (object item in _boundList)
+                {
+                    var cells = new string[n];
+                    for (int i = 0; i < n; i++)
+                    {
+                        var p = _boundProps[i];
+                        object v = (p != null && item != null) ? p.GetValue(item) : null;
+                        cells[i] = v == null ? string.Empty : Convert.ToString(v, CultureInfo.CurrentCulture);
+                    }
+                    _rows.Add(new GridRow(cells));
+                }
+            }
+
+            _hoverRow = _anchor = _focusRow = -1;
+            if (_sortCol >= 0) ApplySort();
+            ClampScroll();
+            Invalidate();
+            if (hadSelection) RaiseSelectionChanged();
         }
 
         // ── 레이아웃 계산 ─────────────────────────────────────────────
@@ -1144,11 +1352,29 @@ namespace AdvancedControls.Controls
         private void SortByColumn(int col)
         {
             if (col < 0 || col >= _columns.Count || !_columns[col].Sortable) return;
-            int di = DataIndex(col);
-            if (di < 0) return;   // 비데이터 열은 정렬 대상 아님
+            if (DataIndex(col) < 0) return;   // 비데이터 열은 정렬 대상 아님
 
             if (_sortCol == col) _sortAsc = !_sortAsc;
             else { _sortCol = col; _sortAsc = true; }
+
+            ApplySort();
+
+            _anchor = -1;
+            _hoverRow = -1;   // 정렬로 행 순서가 바뀌었으니 옛 인덱스 호버를 지운다
+            _focusRow = -1;
+            Invalidate();
+            var h = SortChanged;
+            if (h != null) h(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// 현재 _sortCol·_sortAsc 기준으로 행을 다시 정렬한다(상태·이벤트는 건드리지 않는다).
+        /// 바인딩 재조회가 정렬을 유지할 때도 쓴다.
+        /// </summary>
+        private void ApplySort()
+        {
+            int di = DataIndex(_sortCol);
+            if (di < 0) return;
 
             bool numeric = true;
             foreach (var r in _rows)
@@ -1176,13 +1402,6 @@ namespace AdvancedControls.Controls
                 else cmp = string.Compare(sx, sy, StringComparison.CurrentCultureIgnoreCase);
                 return cmp * dir;
             });
-
-            _anchor = -1;
-            _hoverRow = -1;   // 정렬로 행 순서가 바뀌었으니 옛 인덱스 호버를 지운다
-            _focusRow = -1;
-            Invalidate();
-            var h = SortChanged;
-            if (h != null) h(this, EventArgs.Empty);
         }
 
         private void EnsureRowVisible(int row)
@@ -1227,10 +1446,13 @@ namespace AdvancedControls.Controls
             return Rectangle.Intersect(new Rectangle(cx, y, _columns[col].Width, _rowHeight), _viewport);
         }
 
-        /// <summary>셀 인라인 편집을 시작한다. ReadOnly이거나 비데이터(체크박스) 열이면 무시.</summary>
+        /// <summary>
+        /// 셀 인라인 편집을 시작한다. ReadOnly이거나 비데이터(체크박스) 열이면 무시.
+        /// 바인딩 중에도 무시한다 — 셀은 원본의 스냅숏이라 고쳐도 되반영할 곳이 없다(단방향).
+        /// </summary>
         public void BeginEdit(int row, int col)
         {
-            if (_readOnly || row < 0 || row >= _rows.Count) return;
+            if (_readOnly || IsBound || row < 0 || row >= _rows.Count) return;
             if (col < 0 || col >= _columns.Count || DataIndex(col) < 0) return;
             CommitEdit();
             EnsureLayout();
@@ -1664,6 +1886,7 @@ namespace AdvancedControls.Controls
         {
             if (disposing)
             {
+                DetachBoundList();
                 if (Region != null) Region.Dispose();
                 if (_headerFont != null) _headerFont.Dispose();
             }
@@ -1712,6 +1935,16 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.AlternatingRowColors; }
             set { _owner.AlternatingRowColors = value; }
+        }
+
+        [DefaultValue(null)]
+        [RefreshProperties(RefreshProperties.Repaint)]
+        [AttributeProvider(typeof(IListSource))]
+        [Description("행을 채울 데이터 원본입니다. DataTable, BindingSource, IList를 받습니다. 지정하면 AddRow 등 직접 수정을 막습니다.")]
+        public object DataSource
+        {
+            get { return _owner.DataSource; }
+            set { _owner.DataSource = value; }
         }
     }
 }

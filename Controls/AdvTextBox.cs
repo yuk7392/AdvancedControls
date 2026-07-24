@@ -768,7 +768,7 @@ namespace AdvancedControls.Controls
 
     /// <summary>AdvTextBox가 추가한 속성.</summary>
     [TypeConverter(typeof(ExpandableObjectConverter))]
-    public sealed class AdvTextBoxOptions : AdvOptions
+    public class AdvTextBoxOptions : AdvOptions   // 파생 입력 컨트롤(마스크·자동완성)이 파사드를 확장한다
     {
         private readonly AdvTextBox _owner;
 

@@ -16,6 +16,7 @@ namespace AdvancedControls.Controls
     {
         internal readonly List<AdvTreeNode> ChildNodes = new List<AdvTreeNode>();
         private bool _expanded;
+        private bool _checked;
 
         public string Text { get; set; }
         public object Tag { get; set; }
@@ -34,6 +35,43 @@ namespace AdvancedControls.Controls
                 _expanded = value;
                 if (Owner != null) Owner.NotifyStructureChanged();
             }
+        }
+
+        /// <summary>
+        /// 체크 여부(부모-자식 연동 없는 독립 체크). 바꾸면 트리가 AfterCheck를 올린다.
+        /// 트리의 CheckBoxes가 꺼져 있으면 화면에 보이지 않을 뿐 값은 유지된다.
+        /// </summary>
+        public bool Checked
+        {
+            get { return _checked; }
+            set
+            {
+                if (_checked == value) return;
+                _checked = value;
+                if (Owner != null) Owner.NotifyNodeChecked(this);
+            }
+        }
+
+        private Image _icon;
+
+        /// <summary>노드 앞에 그릴 아이콘(16px 논리 크기로 스케일). null이면 없다.</summary>
+        public Image Icon
+        {
+            get { return _icon; }
+            set
+            {
+                if (ReferenceEquals(_icon, value)) return;
+                _icon = value;
+                if (Owner != null) Owner.Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// 트리에서 이 노드(서브트리 포함)를 제거한다. 이미 제거됐거나 소속 트리가 없으면 false.
+        /// </summary>
+        public bool Remove()
+        {
+            return Owner != null && Owner.Remove(this);
         }
 
         [Browsable(false)]
@@ -69,9 +107,14 @@ namespace AdvancedControls.Controls
 
         private int _rowHeight = 26;
         private int _indent = 18;
+        private bool _checkBoxes;
         private const int ScrollSize = 10;   // AdvScrollBar.DefaultWidth와 통일
         private const int MinThumb = 24;
         private const int ChevronBox = 16;
+        private const int CheckBoxSize = 16;   // AdvListBox와 동일 규격
+        private const int CheckGap = 4;        // 체크박스와 텍스트 사이
+        private const int IconSize = 16;       // 노드 아이콘 크기
+        private const int IconGap = 4;         // 아이콘과 텍스트 사이
 
         private int _scrollY;
         private AdvTreeNode _selected;
@@ -95,6 +138,11 @@ namespace AdvancedControls.Controls
         [Category("Behavior")]
         [Description("노드가 펼쳐지거나 접힌 뒤 발생합니다.")]
         public event EventHandler<AdvTreeNodeEventArgs> AfterExpandCollapse;
+
+        /// <summary>노드 체크 상태가 바뀐 뒤 발생한다.</summary>
+        [Category("Behavior")]
+        [Description("노드의 체크 상태가 바뀐 뒤 발생합니다. CheckBoxes가 켜져 있어야 화면에 보입니다.")]
+        public event EventHandler<AdvTreeNodeEventArgs> AfterCheck;
 
         public AdvTreeView()
         {
@@ -142,6 +190,41 @@ namespace AdvancedControls.Controls
             return n;
         }
 
+        /// <summary>
+        /// 노드(서브트리 포함)를 제거한다. 이 트리 소속이 아니거나 이미 제거됐으면 false.
+        /// 제거된 서브트리 안에 선택 노드가 있었으면 선택을 해제한다(AfterSelect(null) 발생).
+        /// </summary>
+        public bool Remove(AdvTreeNode node)
+        {
+            if (node == null || !ReferenceEquals(node.Owner, this)) return false;
+
+            var list = node.Parent != null ? node.Parent.ChildNodes : _roots;
+            if (!list.Remove(node)) return false;
+
+            if (_selected != null && IsInSubtree(_selected, node)) SelectNode(null, false);
+            if (_hover != null && IsInSubtree(_hover, node)) _hover = null;
+
+            DetachSubtree(node);
+            node.Parent = null;
+            NotifyStructureChanged();
+            return true;
+        }
+
+        /// <summary>candidate가 root의 서브트리(root 포함) 안에 있는지.</summary>
+        private static bool IsInSubtree(AdvTreeNode candidate, AdvTreeNode root)
+        {
+            for (var n = candidate; n != null; n = n.Parent)
+                if (ReferenceEquals(n, root)) return true;
+            return false;
+        }
+
+        /// <summary>제거된 서브트리 전체의 소속을 끊어, 남은 참조로 다시 Remove해도 false가 되게 한다.</summary>
+        private static void DetachSubtree(AdvTreeNode node)
+        {
+            node.Owner = null;
+            foreach (var c in node.ChildNodes) DetachSubtree(c);
+        }
+
         /// <summary>모든 노드를 지운다.</summary>
         public void Clear()
         {
@@ -160,6 +243,57 @@ namespace AdvancedControls.Controls
         {
             get { return _selected; }
             set { SelectNode(value, true); }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("각 노드 왼쪽에 체크박스를 표시합니다. 선택과 별개로 여러 노드를 체크할 수 있습니다.")]
+        public bool CheckBoxes
+        {
+            get { return _checkBoxes; }
+            set
+            {
+                if (_checkBoxes == value) return;
+                _checkBoxes = value;
+                Invalidate();
+            }
+        }
+
+        /// <summary>체크된 노드들(트리 순서, 접혀서 안 보이는 노드 포함).</summary>
+        [Browsable(false)]
+        public IList<AdvTreeNode> CheckedNodes
+        {
+            get
+            {
+                var list = new List<AdvTreeNode>();
+                CollectChecked(_roots, list);
+                return list;
+            }
+        }
+
+        private static void CollectChecked(List<AdvTreeNode> nodes, List<AdvTreeNode> into)
+        {
+            foreach (var n in nodes)
+            {
+                if (n.Checked) into.Add(n);
+                CollectChecked(n.ChildNodes, into);
+            }
+        }
+
+        /// <summary>노드 Checked가 바뀌면 다시 그리고 AfterCheck를 올린다.</summary>
+        internal void NotifyNodeChecked(AdvTreeNode node)
+        {
+            Invalidate();
+            var h = AfterCheck;
+            if (h != null) h(this, new AdvTreeNodeEventArgs(node));
+
+            // 보이는 행이면 상태 변경을 스크린리더에 알린다
+            if (IsHandleCreated && _checkBoxes)
+            {
+                EnsureLayout();
+                int idx = IndexOfVisible(node);
+                if (idx >= 0) AccessibilityNotifyClients(AccessibleEvents.StateChange, idx);
+            }
         }
 
         public void ExpandAll() { SetExpandedRecursive(_roots, true); }
@@ -310,6 +444,25 @@ namespace AdvancedControls.Controls
                 }
 
                 int textX = indentX + chevBox + 2;
+
+                // 체크박스(켜져 있을 때만). 도형은 목록과 공용 헬퍼가 그린다
+                if (_checkBoxes)
+                {
+                    int sz = AdvGraphics.Scale(this, CheckBoxSize);
+                    var box = new Rectangle(textX, y + (_rowHeight - sz) / 2, sz, sz);
+                    AdvGraphics.DrawItemCheckBox(g, this, box, node.Checked, Enabled, theme);
+                    textX += AdvGraphics.Scale(this, CheckBoxSize + CheckGap);
+                }
+
+                // 노드 아이콘(있을 때만)
+                if (node.Icon != null)
+                {
+                    int isz = AdvGraphics.Scale(this, IconSize);
+                    var ir = new Rectangle(textX, y + (_rowHeight - isz) / 2, isz, isz);
+                    g.DrawImage(node.Icon, ir);
+                    textX += isz + AdvGraphics.Scale(this, IconGap);
+                }
+
                 var textRect = Rectangle.FromLTRB(textX, y, _viewport.Right - 4, y + _rowHeight);
                 // TextRenderer(GDI)는 Graphics.Clip을 무시하므로, 썸 드래그로 부분만 걸친 행의
                 // 텍스트가 뷰포트 밖(테두리)까지 번지지 않도록 rect를 뷰포트와 직접 교차시킨다.
@@ -370,9 +523,20 @@ namespace AdvancedControls.Controls
             // 셰브런(펼침 화살표) 영역을 눌렀으면 토글, 아니면 선택
             int indentX = _viewport.Left + 6 + vr.Level * _indent;
             if (vr.Node.HasChildren && e.X >= indentX && e.X < indentX + AdvGraphics.Scale(this, ChevronBox))
+            {
                 ToggleExpand(vr.Node);
-            else
-                SelectNode(vr.Node, true);
+                return;
+            }
+
+            // 체크박스 영역을 눌렀으면 선택은 그대로 두고 체크만 토글한다(목록과 동일 규칙)
+            int checkX = indentX + AdvGraphics.Scale(this, ChevronBox) + 2;
+            if (_checkBoxes && e.X >= checkX && e.X < checkX + AdvGraphics.Scale(this, CheckBoxSize))
+            {
+                vr.Node.Checked = !vr.Node.Checked;   // NotifyNodeChecked가 AfterCheck·다시 그림 처리
+                return;
+            }
+
+            SelectNode(vr.Node, true);
         }
 
         protected override void OnMouseDoubleClick(MouseEventArgs e)
@@ -517,7 +681,7 @@ namespace AdvancedControls.Controls
             switch (keyData & Keys.KeyCode)
             {
                 case Keys.Up: case Keys.Down: case Keys.Left: case Keys.Right:
-                case Keys.Home: case Keys.End: case Keys.Return:
+                case Keys.Home: case Keys.End: case Keys.Return: case Keys.Space:
                     return true;
             }
             return base.IsInputKey(keyData);
@@ -556,6 +720,11 @@ namespace AdvancedControls.Controls
                     break;
                 case Keys.Return:
                     if (_selected != null && _selected.HasChildren) ToggleExpand(_selected);
+                    break;
+                case Keys.Space:
+                    // 스페이스로 선택 노드의 체크를 토글한다(목록과 동일 규칙)
+                    if (!_checkBoxes || _selected == null) return;
+                    _selected.Checked = !_selected.Checked;
                     break;
                 default: return;
             }
@@ -660,16 +829,25 @@ namespace AdvancedControls.Controls
                         }
                         if (node.HasChildren)
                             s |= node.Expanded ? AccessibleStates.Expanded : AccessibleStates.Collapsed;
+                        if (_o._checkBoxes && node.Checked) s |= AccessibleStates.Checked;
                         return s;
                     }
                 }
 
                 public override Rectangle Bounds { get { return _o.RowScreenRectByVisibleIndex(_visIndex); } }
 
-                // 자식이 있으면 펼치기/접기, 없으면 선택이 기본 동작이다(표준 트리 관례)
+                // 자식이 있으면 펼치기/접기가 기본 동작이다(표준 트리 관례).
+                // 리프는 체크박스 트리에선 체크 토글(Space 키와 일치), 아니면 선택이다.
                 public override string DefaultAction
                 {
-                    get { var n = Node; if (n == null) return null; return n.HasChildren ? (n.Expanded ? "접기" : "펼치기") : "선택"; }
+                    get
+                    {
+                        var n = Node;
+                        if (n == null) return null;
+                        if (n.HasChildren) return n.Expanded ? "접기" : "펼치기";
+                        if (_o._checkBoxes) return n.Checked ? "체크 해제" : "체크";
+                        return "선택";
+                    }
                 }
 
                 public override void DoDefaultAction()
@@ -677,6 +855,7 @@ namespace AdvancedControls.Controls
                     var n = Node;
                     if (n == null) return;
                     if (n.HasChildren) _o.ToggleExpand(n);
+                    else if (_o._checkBoxes) n.Checked = !n.Checked;
                     else _o.SelectNode(n, true);
                 }
             }
@@ -701,6 +880,19 @@ namespace AdvancedControls.Controls
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class AdvTreeViewOptions : AdvOptions
     {
-        internal AdvTreeViewOptions(AdvTreeView owner) : base(owner.Styling, owner.Palette) { }
+        private readonly AdvTreeView _owner;
+
+        internal AdvTreeViewOptions(AdvTreeView owner) : base(owner.Styling, owner.Palette)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(false)]
+        [Description("각 노드 왼쪽에 체크박스를 표시합니다. 선택과 별개로 여러 노드를 체크할 수 있습니다.")]
+        public bool CheckBoxes
+        {
+            get { return _owner.CheckBoxes; }
+            set { _owner.CheckBoxes = value; }
+        }
     }
 }

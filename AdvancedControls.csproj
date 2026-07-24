@@ -69,6 +69,7 @@
     <Compile Include="Controls\Internal\AdvComboPopup.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\Internal\AdvDataBinding.cs" />
     <Compile Include="Controls\AdvGroupBox.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -174,6 +175,34 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Controls\AdvAlert.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvToast.cs" />
+    <Compile Include="Controls\AdvMaskedTextBox.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvAutoCompleteBox.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvColorPickerPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvColorPicker.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvStepper.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvWizard.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvTagInput.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvAvatar.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\AdvRating.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Controls\AdvSpinner.cs">

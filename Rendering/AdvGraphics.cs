@@ -264,6 +264,44 @@ namespace AdvancedControls.Rendering
             if (old != null) old.Dispose();
         }
 
+        /// <summary>
+        /// 목록·트리 항목용 체크박스를 box에 그린다. 상자는 항상 입력 배경으로 채우고
+        /// 체크는 강조색으로 — 선택된(강조색) 행 위에서도 대비가 유지된다.
+        /// (AdvListBox·AdvTreeView가 같은 도형을 각자 그리고 있어 여기로 모았다.)
+        /// </summary>
+        public static void DrawItemCheckBox(Graphics g, Control c, Rectangle box,
+                                            bool isChecked, bool enabled, AdvTheme theme)
+        {
+            var oldSmooth = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            using (var path = CreateRoundedRect(box, Scale(c, 3)))
+            {
+                using (var b = new SolidBrush(enabled ? theme.InputBackground : theme.InputBackgroundDisabled))
+                    g.FillPath(b, path);
+                Color line = !enabled ? theme.TextDisabled : (isChecked ? theme.Accent : theme.Border);
+                using (var pen = new Pen(line, Scale(c, isChecked ? 1.4f : 1f)))
+                    g.DrawPath(pen, path);
+            }
+
+            if (isChecked)
+            {
+                int ins = Scale(c, 4);
+                var inner = Rectangle.Inflate(box, -ins, -ins);
+                var pts = new[]
+                {
+                    new Point(inner.Left, inner.Top + inner.Height / 2),
+                    new Point(inner.Left + inner.Width * 2 / 5, inner.Bottom),
+                    new Point(inner.Right, inner.Top)
+                };
+                using (var pen = new Pen(enabled ? theme.Accent : theme.TextDisabled, Scale(c, 1.8f))
+                { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+                    g.DrawLines(pen, pts);
+            }
+
+            g.SmoothingMode = oldSmooth;
+        }
+
         /// <summary>두 색 사이를 t(0~1)로 보간한다. 호버 전환 애니메이션에 쓴다.</summary>
         public static Color Blend(Color from, Color to, float t)
         {

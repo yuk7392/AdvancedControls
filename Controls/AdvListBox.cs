@@ -37,6 +37,13 @@ namespace AdvancedControls.Controls
         private readonly AdvScrollBar _scrollBar;
         private AdvListBoxOptions _options;
 
+        private object _dataSource;
+        private IList _boundList;
+        private string _displayMember = string.Empty;
+        private string _valueMember = string.Empty;
+        private PropertyDescriptor _displayProperty;
+        private PropertyDescriptor _valueProperty;
+
         /// <summary>이 라이브러리가 추가한 속성. 속성 창에서 펼쳐서 쓴다.</summary>
         [Category(AdvCategory.Name)]
         [Description("이 라이브러리가 추가한 속성입니다. 펼쳐서 조정합니다.")]
@@ -199,6 +206,185 @@ namespace AdvancedControls.Controls
 
         public void ClearSelection() { _core.ClearSelection(); }
 
+        #region 데이터 바인딩
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(null)]
+        [RefreshProperties(RefreshProperties.Repaint)]
+        [AttributeProvider(typeof(IListSource))]
+        [Description("목록을 채울 데이터 원본입니다. DataTable, BindingSource, IList를 받습니다.")]
+        public object DataSource
+        {
+            get { return _dataSource; }
+            set
+            {
+                if (ReferenceEquals(_dataSource, value)) return;
+                SetDataSource(value);
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue("")]
+        [Description("항목을 표시할 때 쓸 속성(컬럼) 이름입니다. 비우면 ToString()을 씁니다.")]
+        public string DisplayMember
+        {
+            get { return _displayMember; }
+            set
+            {
+                value = value ?? string.Empty;
+                if (_displayMember == value) return;
+                _displayMember = value;
+                ResolveMembers();
+                _core.Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue("")]
+        [Description("SelectedValue가 돌려줄 속성(컬럼) 이름입니다. 비우면 항목 자체를 돌려줍니다.")]
+        public string ValueMember
+        {
+            get { return _valueMember; }
+            set
+            {
+                value = value ?? string.Empty;
+                if (_valueMember == value) return;
+                _valueMember = value;
+                ResolveMembers();
+            }
+        }
+
+        /// <summary>선택 항목에서 ValueMember로 뽑은 값. ValueMember가 없으면 항목 자체다.</summary>
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public object SelectedValue
+        {
+            get
+            {
+                var item = SelectedItem;
+                return item == null ? null : GetItemValue(item);
+            }
+            set
+            {
+                if (value == null) { SelectedIndex = -1; return; }
+
+                for (int i = 0; i < _items.Count; i++)
+                {
+                    if (Equals(GetItemValue(_items[i]), value)) { SelectedIndex = i; return; }
+                }
+
+                SelectedIndex = -1;
+            }
+        }
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool IsBound
+        {
+            get { return _boundList != null; }
+        }
+
+        private void SetDataSource(object value)
+        {
+            DetachBoundList();
+
+            _dataSource = value;
+            _boundList = AdvDataBinding.ResolveList(value);
+
+            var bindingList = _boundList as IBindingList;
+            if (bindingList != null) bindingList.ListChanged += BoundListChanged;
+
+            ResolveMembers();
+            ReloadFromBoundList();
+        }
+
+        private void DetachBoundList()
+        {
+            var bindingList = _boundList as IBindingList;
+            if (bindingList != null) bindingList.ListChanged -= BoundListChanged;
+
+            _boundList = null;
+        }
+
+        private void BoundListChanged(object sender, ListChangedEventArgs e)
+        {
+            ReloadFromBoundList();
+        }
+
+        /// <summary>
+        /// 원본이 바뀌면 통째로 다시 읽는다. 항목을 하나씩 옮기면 필드가 늘었을 때
+        /// 조용히 누락되므로 재조회로 맞춘다. 선택은 값 기준으로 복원하고,
+        /// 체크는 옛 인덱스가 새 목록과 무관해지므로 비운다.
+        /// </summary>
+        private void ReloadFromBoundList()
+        {
+            object previousValue = SelectedValue;
+
+            _items.Clear();
+            if (_boundList != null)
+            {
+                foreach (object item in _boundList) _items.Add(item);
+            }
+
+            _core.ResetStateForReload();
+
+            // 다시 읽은 뒤에도 같은 값이 남아 있으면 선택을 유지한다
+            if (previousValue != null)
+            {
+                for (int i = 0; i < _items.Count; i++)
+                {
+                    if (Equals(GetItemValue(_items[i]), previousValue)) { _core.SelectSingle(i, false); break; }
+                }
+            }
+
+            RefreshLayout();
+            Invalidate();
+            CoreSelectionChanged(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// DisplayMember·ValueMember 이름을 실제 속성 기술자로 바꾼다.
+        /// ListBindingHelper를 쓰면 DataTable의 컬럼도 같은 방식으로 잡힌다.
+        /// </summary>
+        private void ResolveMembers()
+        {
+            _displayProperty = null;
+            _valueProperty = null;
+
+            if (_displayMember.Length == 0 && _valueMember.Length == 0) return;
+
+            object source = (object)_boundList ?? _dataSource;
+            if (source == null) return;
+
+            var props = ListBindingHelper.GetListItemProperties(source);
+            if (props == null) return;
+
+            if (_displayMember.Length > 0) _displayProperty = props.Find(_displayMember, true);
+            if (_valueMember.Length > 0) _valueProperty = props.Find(_valueMember, true);
+        }
+
+        /// <summary>항목을 화면에 표시할 글자.</summary>
+        internal string GetItemText(object item)
+        {
+            if (item == null) return string.Empty;
+
+            if (_displayProperty != null)
+            {
+                object v = _displayProperty.GetValue(item);
+                return v == null ? string.Empty : v.ToString();
+            }
+
+            return item.ToString();
+        }
+
+        private object GetItemValue(object item)
+        {
+            if (item == null) return null;
+            return _valueProperty != null ? _valueProperty.GetValue(item) : item;
+        }
+
+        #endregion
+
         private void CoreSelectionChanged(object sender, EventArgs e)
         {
             var handler = SelectedIndexChanged;
@@ -351,6 +537,7 @@ namespace AdvancedControls.Controls
         {
             if (disposing)
             {
+                DetachBoundList();
                 _core.SelectionChanged -= CoreSelectionChanged;
                 _core.CheckChanged -= CoreCheckChanged;
                 _scrollBar.ValueChanged -= ScrollBarValueChanged;
@@ -461,6 +648,20 @@ namespace AdvancedControls.Controls
                 _anchor = -1;
                 Invalidate();
                 Raise();
+            }
+
+            /// <summary>
+            /// 바인딩 재조회처럼 목록이 통째로 바뀔 때 옛 인덱스 상태를 조용히 비운다.
+            /// 이벤트는 호출자가 재조회를 끝낸 뒤 한 번만 올린다.
+            /// </summary>
+            public void ResetStateForReload()
+            {
+                _selected.Clear();
+                _checked.Clear();
+                _primary = -1;
+                _anchor = -1;
+                _hover = -1;
+                Invalidate();
             }
 
             /// <summary>여러 개 선택을 대표 한 개로 줄인다.</summary>
@@ -634,8 +835,7 @@ namespace AdvancedControls.Controls
                         DrawItemCheckBox(g, r, _checked.Contains(i), theme);
 
                     int gutter = CheckGutter;
-                    var item = _items[i];
-                    string text = item == null ? string.Empty : item.ToString();
+                    string text = _owner.GetItemText(_items[i]);
 
                     TextRenderer.DrawText(g, text, Font,
                         new Rectangle(r.X + 8 + gutter, r.Y, r.Width - 16 - gutter, r.Height), fore,
@@ -648,10 +848,7 @@ namespace AdvancedControls.Controls
                 base.OnPaint(e);
             }
 
-            /// <summary>
-            /// 항목 왼쪽에 체크박스를 그린다. 상자는 항상 입력 배경으로 채우고 체크는 강조색으로 —
-            /// 선택된(강조색) 행 위에서도 대비가 유지된다.
-            /// </summary>
+            /// <summary>항목 왼쪽에 체크박스를 그린다. 도형 자체는 트리와 공용 헬퍼가 그린다.</summary>
             private void DrawItemCheckBox(Graphics g, Rectangle row, bool isChecked, AdvTheme theme)
             {
                 int sz = AdvGraphics.Scale(this, CheckBoxSize);
@@ -659,34 +856,7 @@ namespace AdvancedControls.Controls
                 int y = row.Y + (row.Height - sz) / 2;
                 var box = new Rectangle(row.X + pad, y, sz, sz);
 
-                var oldSmooth = g.SmoothingMode;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-
-                using (var path = AdvGraphics.CreateRoundedRect(box, AdvGraphics.Scale(this, 3)))
-                {
-                    using (var b = new SolidBrush(_owner.Enabled ? theme.InputBackground : theme.InputBackgroundDisabled))
-                        g.FillPath(b, path);
-                    Color line = !_owner.Enabled ? theme.TextDisabled : (isChecked ? theme.Accent : theme.Border);
-                    using (var pen = new Pen(line, AdvGraphics.Scale(this, isChecked ? 1.4f : 1f)))
-                        g.DrawPath(pen, path);
-                }
-
-                if (isChecked)
-                {
-                    int ins = AdvGraphics.Scale(this, 4);
-                    var inner = Rectangle.Inflate(box, -ins, -ins);
-                    var pts = new[]
-                    {
-                        new Point(inner.Left, inner.Top + inner.Height / 2),
-                        new Point(inner.Left + inner.Width * 2 / 5, inner.Bottom),
-                        new Point(inner.Right, inner.Top)
-                    };
-                    using (var pen = new Pen(_owner.Enabled ? theme.Accent : theme.TextDisabled, AdvGraphics.Scale(this, 1.8f))
-                    { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
-                        g.DrawLines(pen, pts);
-                }
-
-                g.SmoothingMode = oldSmooth;
+                AdvGraphics.DrawItemCheckBox(g, this, box, isChecked, _owner.Enabled, theme);
             }
 
             protected override void OnMouseMove(MouseEventArgs e)
@@ -880,8 +1050,7 @@ namespace AdvancedControls.Controls
                         get
                         {
                             if (_i < 0 || _i >= _c._items.Count) return null;
-                            var item = _c._items[_i];
-                            return item == null ? string.Empty : item.ToString();
+                            return _c._owner.GetItemText(_c._items[_i]);
                         }
                     }
 
@@ -953,28 +1122,40 @@ namespace AdvancedControls.Controls
             public object this[int index]
             {
                 get { return _list[index]; }
-                set { _list[index] = value; Changed(0, 0); }
+                set { ThrowIfBound(); _list[index] = value; Changed(0, 0); }
             }
 
-            public int Add(object value) { _list.Add(value); Changed(0, 0); return _list.Count - 1; }
+            public int Add(object value) { ThrowIfBound(); _list.Add(value); Changed(0, 0); return _list.Count - 1; }
             public void AddRange(IEnumerable<object> values)
             {
+                ThrowIfBound();
                 if (values == null) return;
                 _list.AddRange(values);
                 Changed(0, 0);
             }
-            public void Insert(int index, object value) { _list.Insert(index, value); Changed(index, 1); }
+            public void Insert(int index, object value) { ThrowIfBound(); _list.Insert(index, value); Changed(index, 1); }
             public void Remove(object value)
             {
                 int i = _list.IndexOf(value);
                 if (i >= 0) RemoveAt(i);
             }
-            public void RemoveAt(int index) { _list.RemoveAt(index); Changed(index, -1); }
-            public void Clear() { _list.Clear(); Changed(0, 0); }
+            public void RemoveAt(int index) { ThrowIfBound(); _list.RemoveAt(index); Changed(index, -1); }
+            public void Clear() { ThrowIfBound(); _list.Clear(); Changed(0, 0); }
             public bool Contains(object value) { return _list.Contains(value); }
             public int IndexOf(object value) { return _list.IndexOf(value); }
             public IEnumerator GetEnumerator() { return _list.GetEnumerator(); }
             public void CopyTo(Array array, int index) { ((IList)_list).CopyTo(array, index); }
+
+            /// <summary>
+            /// 바인딩 중에 직접 항목을 건드리면 다음 새로고침에서 조용히 사라진다.
+            /// 조용히 무시하지 말고 바로 알린다.
+            /// </summary>
+            private void ThrowIfBound()
+            {
+                if (_owner._boundList != null)
+                    throw new InvalidOperationException(
+                        "DataSource가 지정된 동안에는 Items를 직접 바꿀 수 없습니다. 원본 목록을 수정하세요.");
+            }
 
             /// <summary>
             /// 항목이 바뀌면 선택 위치도 따라가야 한다. 그러지 않으면 선택이 조용히
@@ -1003,10 +1184,36 @@ namespace AdvancedControls.Controls
             _owner = owner;
         }
 
-        [Description("목록에 표시할 항목입니다.")]
+        [Description("목록에 표시할 항목입니다. DataSource를 지정하면 직접 넣을 수 없습니다.")]
         public AdvListBox.ObjectCollection Items
         {
             get { return _owner.Items; }
+        }
+
+        [DefaultValue(null)]
+        [RefreshProperties(RefreshProperties.Repaint)]
+        [AttributeProvider(typeof(IListSource))]
+        [Description("목록을 채울 데이터 원본입니다. DataTable, BindingSource, IList를 받습니다.")]
+        public object DataSource
+        {
+            get { return _owner.DataSource; }
+            set { _owner.DataSource = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("항목을 표시할 때 쓸 속성(컬럼) 이름입니다. 비우면 ToString()을 씁니다.")]
+        public string DisplayMember
+        {
+            get { return _owner.DisplayMember; }
+            set { _owner.DisplayMember = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("SelectedValue가 돌려줄 속성(컬럼) 이름입니다. 비우면 항목 자체를 돌려줍니다.")]
+        public string ValueMember
+        {
+            get { return _owner.ValueMember; }
+            set { _owner.ValueMember = value; }
         }
 
         [DefaultValue(AdvSelectionMode.One)]

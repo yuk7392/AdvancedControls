@@ -12,9 +12,38 @@ namespace AdvancedControls.Controls
     public class AdvMenuItem
     {
         private List<AdvMenuItem> _children;
+        private string _shortcut;
+        private Keys _shortcutKeys;
 
         public string Text { get; set; }
-        public string Shortcut { get; set; }
+
+        /// <summary>
+        /// 단축키 표기("Ctrl+N" 등). 대입하면 <see cref="ShortcutKeys"/>도 함께 파싱된다
+        /// — 파싱 가능한 표기면 메뉴바가 폼 전역에서 실제로 바인딩한다.
+        /// </summary>
+        public string Shortcut
+        {
+            get { return _shortcut; }
+            set
+            {
+                _shortcut = value;
+                _shortcutKeys = ParseShortcut(value);
+            }
+        }
+
+        /// <summary>
+        /// 실제 바인딩되는 단축키. 대입하면 표기(<see cref="Shortcut"/>)도 서식대로 맞춰진다.
+        /// </summary>
+        public Keys ShortcutKeys
+        {
+            get { return _shortcutKeys; }
+            set
+            {
+                _shortcutKeys = value;
+                _shortcut = FormatShortcut(value);
+            }
+        }
+
         public bool Enabled { get; set; }
         public object Tag { get; set; }
         public bool IsSeparator { get; internal set; }
@@ -48,6 +77,14 @@ namespace AdvancedControls.Controls
             return it;
         }
 
+        /// <summary>서브메뉴 텍스트·단축키(Keys) 항목을 추가하고 돌려준다.</summary>
+        public AdvMenuItem Add(string text, Keys shortcutKeys)
+        {
+            var it = new AdvMenuItem(text) { ShortcutKeys = shortcutKeys };
+            Children.Add(it);
+            return it;
+        }
+
         /// <summary>서브메뉴에 구분선을 추가한다.</summary>
         public void AddSeparator() { Children.Add(Separator()); }
 
@@ -59,6 +96,105 @@ namespace AdvancedControls.Controls
 
         /// <summary>구분선 항목을 만든다.</summary>
         public static AdvMenuItem Separator() { return new AdvMenuItem { IsSeparator = true, Enabled = false }; }
+
+        // ── 단축키 표기 ↔ Keys 변환 ──────────────────────────────────
+
+        /// <summary>
+        /// "Ctrl+N" 같은 표기를 Keys로 푼다. 대소문자·공백에 관대하다.
+        /// 미지원 토큰이 하나라도 있거나 키가 없으면 <see cref="Keys.None"/>이다(부분 해석 안 함).
+        /// </summary>
+        internal static Keys ParseShortcut(string text)
+        {
+            if (text == null) return Keys.None;
+            text = text.Trim();
+            if (text.Length == 0) return Keys.None;
+
+            Keys mods = Keys.None;
+            Keys key = Keys.None;
+
+            foreach (string raw in text.Split('+'))
+            {
+                string t = raw.Trim().ToUpperInvariant();
+                if (t.Length == 0) return Keys.None;
+
+                if (t == "CTRL" || t == "CONTROL") { mods |= Keys.Control; continue; }
+                if (t == "SHIFT") { mods |= Keys.Shift; continue; }
+                if (t == "ALT") { mods |= Keys.Alt; continue; }
+
+                Keys k = ParseKeyToken(t);
+                if (k == Keys.None || key != Keys.None) return Keys.None;   // 미지원 토큰·키 두 개
+                key = k;
+            }
+
+            return key == Keys.None ? Keys.None : mods | key;
+        }
+
+        private static Keys ParseKeyToken(string t)
+        {
+            if (t.Length == 1)
+            {
+                char c = t[0];
+                if (c >= 'A' && c <= 'Z') return Keys.A + (c - 'A');
+                if (c >= '0' && c <= '9') return Keys.D0 + (c - '0');
+                return Keys.None;
+            }
+
+            if (t[0] == 'F' && t.Length <= 3)
+            {
+                int n;
+                if (int.TryParse(t.Substring(1), out n) && n >= 1 && n <= 24)
+                    return Keys.F1 + (n - 1);
+                return Keys.None;
+            }
+
+            switch (t)
+            {
+                case "DELETE": case "DEL": return Keys.Delete;
+                case "INSERT": case "INS": return Keys.Insert;
+                case "HOME": return Keys.Home;
+                case "END": return Keys.End;
+                case "PAGEUP": case "PGUP": return Keys.PageUp;
+                case "PAGEDOWN": case "PGDN": return Keys.PageDown;
+                case "LEFT": return Keys.Left;
+                case "RIGHT": return Keys.Right;
+                case "UP": return Keys.Up;
+                case "DOWN": return Keys.Down;
+                case "TAB": return Keys.Tab;
+                case "SPACE": return Keys.Space;
+                case "ENTER": case "RETURN": return Keys.Enter;
+                case "ESC": case "ESCAPE": return Keys.Escape;
+                case "BACK": case "BACKSPACE": return Keys.Back;
+            }
+            return Keys.None;
+        }
+
+        /// <summary>Keys를 표준 표기("Ctrl+Shift+S")로 만든다. None이면 빈 문자열.</summary>
+        internal static string FormatShortcut(Keys keys)
+        {
+            Keys code = keys & Keys.KeyCode;
+            if (code == Keys.None) return string.Empty;
+
+            var sb = new System.Text.StringBuilder();
+            if ((keys & Keys.Control) != 0) sb.Append("Ctrl+");
+            if ((keys & Keys.Shift) != 0) sb.Append("Shift+");
+            if ((keys & Keys.Alt) != 0) sb.Append("Alt+");
+            sb.Append(FormatKeyToken(code));
+            return sb.ToString();
+        }
+
+        private static string FormatKeyToken(Keys k)
+        {
+            if (k >= Keys.D0 && k <= Keys.D9) return ((char)('0' + (k - Keys.D0))).ToString();
+            switch (k)
+            {
+                case Keys.Delete: return "Del";
+                case Keys.Insert: return "Ins";
+                case Keys.Escape: return "Esc";
+                case Keys.PageUp: return "PgUp";
+                case Keys.PageDown: return "PgDn";
+            }
+            return k.ToString();
+        }
     }
 
     /// <summary>
@@ -601,6 +737,14 @@ namespace AdvancedControls.Controls
             return it;
         }
 
+        /// <summary>텍스트·단축키(Keys) 항목을 추가하고 돌려준다.</summary>
+        public AdvMenuItem Add(string text, Keys shortcutKeys)
+        {
+            var it = new AdvMenuItem(text) { ShortcutKeys = shortcutKeys };
+            _items.Add(it);
+            return it;
+        }
+
         /// <summary>구분선을 추가한다.</summary>
         public void AddSeparator() { _items.Add(AdvMenuItem.Separator()); }
 
@@ -941,10 +1085,85 @@ namespace AdvancedControls.Controls
             }
         }
 
+        // ── 단축키 폼 바인딩 ─────────────────────────────────────────
+        // 메뉴바가 폼에 붙으면 폼 KeyPreview를 켜고 KeyDown을 받아, 등록된 단축키와
+        // 일치하는 항목을 폼 전역에서 실행한다. 떨어지거나 파기되면 원래 상태로 되돌린다.
+
+        private Form _hookedForm;
+        private bool _prevKeyPreview;
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            HookForm(FindForm());
+        }
+
+        private void HookForm(Form form)
+        {
+            if (ReferenceEquals(_hookedForm, form)) return;
+            UnhookForm();
+            if (form == null) return;
+
+            _hookedForm = form;
+            _prevKeyPreview = form.KeyPreview;
+            form.KeyPreview = true;
+            form.KeyDown += OnFormKeyDown;
+        }
+
+        private void UnhookForm()
+        {
+            if (_hookedForm == null) return;
+            _hookedForm.KeyDown -= OnFormKeyDown;
+            _hookedForm.KeyPreview = _prevKeyPreview;
+            _hookedForm = null;
+        }
+
+        private void OnFormKeyDown(object sender, KeyEventArgs e)
+        {
+            if (!Enabled) return;
+
+            var item = FindShortcut(e.KeyData);
+            if (item == null || !item.Enabled) return;
+
+            item.PerformClick();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        }
+
+        /// <summary>등록된 모든 메뉴(서브메뉴 포함)에서 단축키가 일치하는 항목을 찾는다.</summary>
+        private AdvMenuItem FindShortcut(Keys keys)
+        {
+            if ((keys & Keys.KeyCode) == Keys.None) return null;
+            foreach (var m in _menus)
+            {
+                var found = FindShortcutIn(m.Menu.Items, keys);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static AdvMenuItem FindShortcutIn(IList<AdvMenuItem> items, Keys keys)
+        {
+            foreach (var it in items)
+            {
+                if (it.IsSeparator) continue;
+                if (it.ShortcutKeys == keys) return it;
+                if (it.HasChildren)
+                {
+                    var found = FindShortcutIn(it.ChildList, keys);
+                    if (found != null) return found;
+                }
+            }
+            return null;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
+            {
+                UnhookForm();
                 foreach (var m in _menus) m.Menu.Dispose();
+            }
             base.Dispose(disposing);
         }
     }
