@@ -139,6 +139,7 @@ namespace AdvancedControls.Controls
                 Invalidate();
                 var h = SelectedIndexChanged;
                 if (h != null) h(this, EventArgs.Empty);
+                if (Focused && value >= 0) AccessibilityNotifyClients(AccessibleEvents.Selection, value);
             }
         }
 
@@ -329,6 +330,8 @@ namespace AdvancedControls.Controls
             if (_focusRow == i) return;
             _focusRow = i;
             Invalidate();
+            // 키보드 포커스 이동을 스크린리더에 알린다(포커스가 있을 때만). childID = 항목 인덱스.
+            if (Focused && i >= 0) AccessibilityNotifyClients(AccessibleEvents.Focus, i);
         }
 
         protected override bool IsInputKey(Keys keyData)
@@ -391,6 +394,86 @@ namespace AdvancedControls.Controls
         {
             Invalidate();
             base.OnThemeChanged();
+        }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        /// <summary>항목 i의 화면 좌표 사각형. 넘쳐서 안 보이는 행이면 Empty(접근성 Bounds용, OnPaint 배치와 동일).</summary>
+        private Rectangle RowScreenRect(int i)
+        {
+            if (i < 0 || i >= _items.Length) return Rectangle.Empty;
+            var frame = FrameBounds;
+            int inset = _flush ? 0 : EffectiveBorderWidth;
+            int rowH = RowHeight;
+            if (rowH <= 0) return Rectangle.Empty;
+            int top = frame.Top + inset + i * rowH;
+            if (top >= frame.Bottom - inset) return Rectangle.Empty;
+            return RectangleToScreen(new Rectangle(frame.Left + inset, top, frame.Width - inset * 2, rowH));
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new ListGroupAccessibleObject(this);
+        }
+
+        private sealed class ListGroupAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvListGroup _owner;
+            public ListGroupAccessibleObject(AdvListGroup owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.List; } }
+            public override int GetChildCount() { return _owner._items.Length; }
+            public override AccessibleObject GetChild(int index)
+            {
+                return index >= 0 && index < _owner._items.Length
+                    ? new ItemAccessibleObject(_owner, index) : null;
+            }
+
+            public override AccessibleObject GetSelected()
+            {
+                int s = _owner._selectedIndex;
+                return _owner._selectionEnabled && s >= 0 && s < _owner._items.Length
+                    ? new ItemAccessibleObject(_owner, s) : null;
+            }
+
+            private sealed class ItemAccessibleObject : AccessibleObject
+            {
+                private readonly AdvListGroup _o;
+                private readonly int _i;
+                public ItemAccessibleObject(AdvListGroup o, int i) { _o = o; _i = i; }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role { get { return AccessibleRole.ListItem; } }
+
+                public override string Name
+                {
+                    get
+                    {
+                        if (_i < 0 || _i >= _o._items.Length) return null;
+                        string text = _o._items[_i] ?? string.Empty;
+                        string badge = _i < _o._badges.Length ? _o._badges[_i] : null;
+                        // 배지(개수 등)가 있으면 이름에 붙여 함께 낭독되게 한다
+                        return string.IsNullOrEmpty(badge) ? text : text + ", " + badge;
+                    }
+                }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var s = AccessibleStates.Selectable | AccessibleStates.Focusable;
+                        if (!_o.Enabled) s |= AccessibleStates.Unavailable;
+                        if (_o._selectionEnabled && _i == _o._selectedIndex) s |= AccessibleStates.Selected;
+                        if (_i == _o._focusRow && _o.Focused) s |= AccessibleStates.Focused;
+                        return s;
+                    }
+                }
+
+                public override Rectangle Bounds { get { return _o.RowScreenRect(_i); } }
+
+                public override string DefaultAction { get { return _o._selectionEnabled ? "선택" : "실행"; } }
+                public override void DoDefaultAction() { _o.ActivateRow(_i); }
+            }
         }
     }
 

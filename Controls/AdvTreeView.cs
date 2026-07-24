@@ -298,17 +298,18 @@ namespace AdvancedControls.Controls
                     using (var b = new SolidBrush(theme.SurfaceHover)) g.FillRectangle(b, rowRect);
 
                 int indentX = _viewport.Left + 6 + vr.Level * _indent;
+                int chevBox = AdvGraphics.Scale(this, ChevronBox);
 
                 // 펼침 셰브런
                 if (node.HasChildren)
                 {
-                    var box = new Rectangle(indentX, y, ChevronBox, _rowHeight);
-                    AdvGraphics.DrawChevron(g, box,
+                    var box = new Rectangle(indentX, y, chevBox, _rowHeight);
+                    AdvGraphics.DrawChevron(g, this, box,
                         node.Expanded ? AdvGraphics.ChevronDirection.Down : AdvGraphics.ChevronDirection.Right,
                         selected ? theme.OnAccent : theme.TextMuted, 8, 5, 1.6f, 0);
                 }
 
-                int textX = indentX + ChevronBox + 2;
+                int textX = indentX + chevBox + 2;
                 var textRect = Rectangle.FromLTRB(textX, y, _viewport.Right - 4, y + _rowHeight);
                 // TextRenderer(GDI)는 Graphics.Clip을 무시하므로, 썸 드래그로 부분만 걸친 행의
                 // 텍스트가 뷰포트 밖(테두리)까지 번지지 않도록 rect를 뷰포트와 직접 교차시킨다.
@@ -368,7 +369,7 @@ namespace AdvancedControls.Controls
 
             // 셰브런(펼침 화살표) 영역을 눌렀으면 토글, 아니면 선택
             int indentX = _viewport.Left + 6 + vr.Level * _indent;
-            if (vr.Node.HasChildren && e.X >= indentX && e.X < indentX + ChevronBox)
+            if (vr.Node.HasChildren && e.X >= indentX && e.X < indentX + AdvGraphics.Scale(this, ChevronBox))
                 ToggleExpand(vr.Node);
             else
                 SelectNode(vr.Node, true);
@@ -450,6 +451,14 @@ namespace AdvancedControls.Controls
             if (!node.HasChildren) return;
             node.Expanded = !node.Expanded;   // NotifyStructureChanged로 다시 그림
             RaiseExpandCollapse(node);
+            // 펼침/접힘으로 보이는 행 집합이 바뀌었음을 스크린리더에 알린다(펼침 상태 변경 + 자식 재구성)
+            if (IsHandleCreated)
+            {
+                EnsureLayout();
+                int idx = IndexOfVisible(node);
+                if (idx >= 0) AccessibilityNotifyClients(AccessibleEvents.StateChange, idx);
+                AccessibilityNotifyClients(AccessibleEvents.Reorder, -1);   // childID -1 → CHILDID_SELF
+            }
         }
 
         private void RaiseExpandCollapse(AdvTreeNode node)
@@ -466,6 +475,7 @@ namespace AdvancedControls.Controls
             Invalidate();
             var h = AfterSelect;
             if (h != null) h(this, new AdvTreeNodeEventArgs(node));
+            NotifyTreeAccFocus();
         }
 
         private void EnsureNodeVisible(AdvTreeNode node)
@@ -562,6 +572,114 @@ namespace AdvancedControls.Controls
         {
             if (idx < 0 || idx >= _visible.Count) return;
             SelectNode(_visible[idx].Node, true);
+        }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+        // 보이는 행 평면 모델: 루트(Outline)의 직접 자식 = 현재 보이는 노드들(_visible).
+        // 이래야 MSAA 단일 childID(= 보이는 행 인덱스)로 라이브 포커스 이벤트를 정확히 지정할 수 있다.
+        // 접힌 노드의 하위는 펼치기 전까지 트리에 나타나지 않는다(네이티브 MSAA 트리와 동일). 펼침/접힘
+        // 상태는 각 항목의 State(Expanded/Collapsed)로 전달한다.
+
+        private Rectangle RowScreenRectByVisibleIndex(int idx)
+        {
+            EnsureLayout();
+            if (idx < 0 || idx >= _visible.Count) return Rectangle.Empty;
+            int y = _viewport.Top + idx * _rowHeight - _scrollY;
+            return RectangleToScreen(new Rectangle(_viewport.Left, y, _viewport.Width, _rowHeight));
+        }
+
+        /// <summary>선택 노드 이동을 스크린리더에 라이브로 알린다(포커스가 있을 때만). childID = 보이는 행 인덱스.</summary>
+        private void NotifyTreeAccFocus()
+        {
+            if (!Focused || _selected == null) return;
+            EnsureLayout();
+            int idx = IndexOfVisible(_selected);
+            if (idx < 0) return;
+            AccessibilityNotifyClients(AccessibleEvents.Focus, idx);
+            AccessibilityNotifyClients(AccessibleEvents.Selection, idx);
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new TreeAccessibleObject(this);
+        }
+
+        private sealed class TreeAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvTreeView _o;
+            public TreeAccessibleObject(AdvTreeView o) : base(o) { _o = o; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.Outline; } }
+
+            public override int GetChildCount() { _o.EnsureLayout(); return _o._visible.Count; }
+            public override AccessibleObject GetChild(int index)
+            {
+                _o.EnsureLayout();
+                return index >= 0 && index < _o._visible.Count
+                    ? new NodeAccessibleObject(_o, index) : null;
+            }
+
+            public override AccessibleObject GetSelected()
+            {
+                if (_o._selected == null) return null;
+                _o.EnsureLayout();
+                int idx = _o.IndexOfVisible(_o._selected);
+                return idx >= 0 ? new NodeAccessibleObject(_o, idx) : null;
+            }
+
+            public override AccessibleObject GetFocused() { return GetSelected(); }
+
+            /// <summary>보이는 행 하나. 접힘/펼침은 State로, 계층 깊이는(MSAA 한계상) 별도 전달하지 않는다.</summary>
+            private sealed class NodeAccessibleObject : AccessibleObject
+            {
+                private readonly AdvTreeView _o;
+                private readonly int _visIndex;
+                public NodeAccessibleObject(AdvTreeView o, int visIndex) { _o = o; _visIndex = visIndex; }
+
+                private AdvTreeNode Node
+                {
+                    get { return _visIndex >= 0 && _visIndex < _o._visible.Count ? _o._visible[_visIndex].Node : null; }
+                }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role { get { return AccessibleRole.OutlineItem; } }
+                public override string Name { get { var n = Node; return n != null ? n.Text : null; } }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var node = Node;
+                        if (node == null) return AccessibleStates.None;
+                        var s = AccessibleStates.Selectable | AccessibleStates.Focusable;
+                        if (!_o.Enabled) s |= AccessibleStates.Unavailable;
+                        if (ReferenceEquals(node, _o._selected))
+                        {
+                            s |= AccessibleStates.Selected;
+                            if (_o.Focused) s |= AccessibleStates.Focused;
+                        }
+                        if (node.HasChildren)
+                            s |= node.Expanded ? AccessibleStates.Expanded : AccessibleStates.Collapsed;
+                        return s;
+                    }
+                }
+
+                public override Rectangle Bounds { get { return _o.RowScreenRectByVisibleIndex(_visIndex); } }
+
+                // 자식이 있으면 펼치기/접기, 없으면 선택이 기본 동작이다(표준 트리 관례)
+                public override string DefaultAction
+                {
+                    get { var n = Node; if (n == null) return null; return n.HasChildren ? (n.Expanded ? "접기" : "펼치기") : "선택"; }
+                }
+
+                public override void DoDefaultAction()
+                {
+                    var n = Node;
+                    if (n == null) return;
+                    if (n.HasChildren) _o.ToggleExpand(n);
+                    else _o.SelectNode(n, true);
+                }
+            }
         }
 
         protected override void Dispose(bool disposing)

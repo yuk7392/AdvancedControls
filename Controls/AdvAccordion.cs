@@ -178,13 +178,14 @@ namespace AdvancedControls.Controls
                 using (var b = new SolidBrush(theme.SurfaceHover))
                     g.FillRectangle(b, header);
 
+            int chevW = AdvGraphics.Scale(this, ChevW);
             var titleRect = new Rectangle(header.Left + HeaderPadH, header.Top,
-                                          Math.Max(0, header.Width - HeaderPadH - ChevW), header.Height);
+                                          Math.Max(0, header.Width - HeaderPadH - chevW), header.Height);
             TextRenderer.DrawText(g, _title, Font, titleRect, Enabled ? theme.Text : theme.TextDisabled,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
-            var chev = new Rectangle(header.Right - ChevW, header.Top, ChevW, header.Height);
-            AdvGraphics.DrawChevron(g, chev,
+            var chev = new Rectangle(header.Right - chevW, header.Top, chevW, header.Height);
+            AdvGraphics.DrawChevron(g, this, chev,
                 _expanded ? AdvGraphics.ChevronDirection.Down : AdvGraphics.ChevronDirection.Right,
                 theme.TextMuted, 9, 5, 1.6f, 0);
 

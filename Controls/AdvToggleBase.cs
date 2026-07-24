@@ -47,9 +47,11 @@ namespace AdvancedControls.Controls
             get { return _glyph; }
         }
 
+        // 도형 크기는 96dpi 논리값(_glyph.Size, 공개 속성)이며 그릴 때 화면 DPI로 스케일한다.
+        // 레이아웃(GetPreferredSize)·그리기가 같은 getter를 쓰므로 함께 커진다.
         protected int GlyphSize
         {
-            get { return _glyph.Size; }
+            get { return AdvGraphics.Scale(this, _glyph.Size); }
         }
 
         protected int GlyphGap

@@ -467,7 +467,7 @@ namespace AdvancedControls.Controls
                                            SplitWidth, Math.Max(0, bounds.Height - bw * 2));
                 using (var pen = new Pen(Color.FromArgb(90, foreColor)))
                     g.DrawLine(pen, _splitRect.Left, _splitRect.Top + 4, _splitRect.Left, _splitRect.Bottom - 4);
-                AdvGraphics.DrawChevron(g, _splitRect, AdvGraphics.ChevronDirection.Down, foreColor, 8, 4, 1.5f, 0);
+                AdvGraphics.DrawChevron(g, this, _splitRect, AdvGraphics.ChevronDirection.Down, foreColor, 8, 4, 1.5f, 0);
                 rightInset = SplitWidth;
             }
             else

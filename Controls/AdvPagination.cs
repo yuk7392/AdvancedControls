@@ -249,7 +249,7 @@ namespace AdvancedControls.Controls
                     var dir = cell.Kind == CellKind.Prev
                             ? AdvGraphics.ChevronDirection.Left
                             : AdvGraphics.ChevronDirection.Right;
-                    AdvGraphics.DrawChevron(g, cell.Bounds, dir, fore, 8, 5, 1.6f, 0);
+                    AdvGraphics.DrawChevron(g, this, cell.Bounds, dir, fore, 8, 5, 1.6f, 0);
                 }
 
                 // 키보드 포커스가 놓인 셀에 포커스 링을 그린다.

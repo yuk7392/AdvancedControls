@@ -386,6 +386,7 @@ namespace AdvancedControls.Controls
                 EnsureRowVisible(value);
                 Invalidate();
                 RaiseSelectionChanged();
+                NotifyRowAccFocus(value);
             }
         }
 
@@ -660,7 +661,7 @@ namespace AdvancedControls.Controls
                     // 체크박스 열 머리글 = 전체선택 체크박스(빈칸/체크/부분선택 대시)
                     if (col.IsCheckBox)
                     {
-                        const int hbox = 16;
+                        int hbox = AdvGraphics.Scale(this, 16);
                         var hr = new Rectangle(cellRect.Left + (cellRect.Width - hbox) / 2,
                                                cellRect.Top + (cellRect.Height - hbox) / 2, hbox, hbox);
                         if (hr.Right > _headerRect.Left && hr.Left < _headerRect.Right)
@@ -675,15 +676,16 @@ namespace AdvancedControls.Controls
                     }
 
                     // 정렬 화살표 자리를 오른쪽에 비운다. 데이터 셀과 같은 부분열 처리로 헤더도 함께 스크롤.
-                    int arrow = (_sortCol == c) ? 14 : 0;
+                    int arrow = (_sortCol == c) ? AdvGraphics.Scale(this, 14) : 0;
                     var hInner = new Rectangle(cellRect.Left + CellPadX, cellRect.Top,
                                                Math.Max(0, col.Width - CellPadX * 2 - arrow), cellRect.Height);
                     DrawClippedText(g, col.Header, hInner, _headerRect, headerFont, theme.Text, col.Alignment);
 
                     if (_sortCol == c)
                     {
-                        var arrowArea = new Rectangle(cellRect.Right - 16, cellRect.Top, 12, cellRect.Height);
-                        AdvGraphics.DrawChevron(g, arrowArea,
+                        var arrowArea = new Rectangle(cellRect.Right - AdvGraphics.Scale(this, 16), cellRect.Top,
+                                                      AdvGraphics.Scale(this, 12), cellRect.Height);
+                        AdvGraphics.DrawChevron(g, this, arrowArea,
                             _sortAsc ? AdvGraphics.ChevronDirection.Up : AdvGraphics.ChevronDirection.Down,
                             theme.TextMuted, 8, 4, 1.4f, 0);
                     }
@@ -769,19 +771,21 @@ namespace AdvancedControls.Controls
             g.TextRenderingHint = prev;
         }
 
-        /// <summary>체크박스 하나. state: 0=빈칸, 1=체크, 2=대시(부분선택).</summary>
-        private static void DrawCheckBox(Graphics g, Rectangle box, int state, Color fill, Color mark, Color border)
+        /// <summary>체크박스 하나. state: 0=빈칸, 1=체크, 2=대시(부분선택). 내부 여백·펜은 DPI로 스케일.</summary>
+        private void DrawCheckBox(Graphics g, Rectangle box, int state, Color fill, Color mark, Color border)
         {
             var sm = g.SmoothingMode;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var path = AdvGraphics.CreateRoundedRect(box, new AdvCorners(4)))
+            using (var path = AdvGraphics.CreateRoundedRect(box, new AdvCorners(AdvGraphics.Scale(this, 4))))
             {
                 if (fill.A > 0) using (var b = new SolidBrush(fill)) g.FillPath(b, path);
                 using (var pen = new Pen(border)) g.DrawPath(pen, path);
             }
-            var ci = Rectangle.Inflate(box, -4, -4);
+            int ins = AdvGraphics.Scale(this, 4);
+            float mw = AdvGraphics.Scale(this, 2f);
+            var ci = Rectangle.Inflate(box, -ins, -ins);
             if (state == 1)
-                using (var pen = new Pen(mark, 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                using (var pen = new Pen(mark, mw) { StartCap = LineCap.Round, EndCap = LineCap.Round })
                     g.DrawLines(pen, new[]
                     {
                         new Point(ci.Left, ci.Top + ci.Height * 3 / 5),
@@ -789,7 +793,7 @@ namespace AdvancedControls.Controls
                         new Point(ci.Right, ci.Top)
                     });
             else if (state == 2)
-                using (var pen = new Pen(mark, 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                using (var pen = new Pen(mark, mw) { StartCap = LineCap.Round, EndCap = LineCap.Round })
                     g.DrawLine(pen, ci.Left, box.Top + box.Height / 2, ci.Right, box.Top + box.Height / 2);
             g.SmoothingMode = sm;
         }
@@ -797,7 +801,7 @@ namespace AdvancedControls.Controls
         /// <summary>셀 체크박스. 선택 행은 강조 배경 위라 외곽선·체크를 OnAccent로 그린다.</summary>
         private void DrawCheck(Graphics g, Rectangle cellRect, bool selected, AdvTheme theme)
         {
-            const int box = 16;
+            int box = AdvGraphics.Scale(this, 16);
             var r = new Rectangle(cellRect.Left + (cellRect.Width - box) / 2,
                                   cellRect.Top + (cellRect.Height - box) / 2, box, box);
             if (r.Right <= _viewport.Left || r.Left >= _viewport.Right) return;   // 가로 스크롤로 벗어나면 스킵
@@ -892,6 +896,7 @@ namespace AdvancedControls.Controls
                     EnsureRowVisible(row);
                     Invalidate();
                     RaiseSelectionChanged();
+                    NotifyRowAccFocus(row);
                 }
                 else HandleRowClick(row);
             }
@@ -1107,6 +1112,7 @@ namespace AdvancedControls.Controls
             EnsureRowVisible(row);
             Invalidate();
             RaiseSelectionChanged();
+            NotifyRowAccFocus(row);
         }
 
         private void SelectOnlyRow(int row)
@@ -1383,8 +1389,275 @@ namespace AdvancedControls.Controls
                 EnsureRowVisible(next);
                 Invalidate();
                 RaiseSelectionChanged();
+                NotifyRowAccFocus(next);
             }
             e.Handled = true;
+        }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+        // 표준 그리드처럼 Table → Row → Cell 계층으로 노출한다. 첫 행(있으면)은 머리글 행이다.
+        // 화면 좌표·선택 조작은 아래 헬퍼로 모아 두어(클래스 컨텍스트에서 실행) 구조체 필드
+        // 원격 접근 경고(CS1690)를 피하고 레이아웃 로직을 한곳에 둔다.
+
+        private bool HasHeaderRow { get { return _columns.Count > 0; } }
+
+        /// <summary>행 이동을 스크린리더에 라이브로 알린다(포커스가 있을 때만).
+        /// childID = 접근성 트리의 자식 인덱스(머리글 행이 있으면 +1).</summary>
+        private void NotifyRowAccFocus(int row)
+        {
+            if (row < 0 || row >= _rows.Count || !Focused) return;
+            int childId = row + (HasHeaderRow ? 1 : 0);
+            AccessibilityNotifyClients(AccessibleEvents.Focus, childId);
+            AccessibilityNotifyClients(AccessibleEvents.Selection, childId);
+        }
+
+        private Rectangle RowScreenRect(int row)
+        {
+            EnsureLayout();
+            int y = _viewport.Top + row * _rowHeight - _scrollY;
+            return RectangleToScreen(new Rectangle(_viewport.Left, y, _viewport.Width, _rowHeight));
+        }
+
+        private Rectangle CellScreenRect(int row, int col)
+        {
+            if (col < 0 || col >= _columns.Count) return Rectangle.Empty;
+            EnsureLayout();
+            int y = _viewport.Top + row * _rowHeight - _scrollY;
+            int cx = _viewport.Left - _scrollX;
+            for (int i = 0; i < col; i++) cx += _columns[i].Width;
+            return RectangleToScreen(new Rectangle(cx, y, _columns[col].Width, _rowHeight));
+        }
+
+        private Rectangle HeaderScreenRect()
+        {
+            EnsureLayout();
+            return RectangleToScreen(_headerRect);
+        }
+
+        private Rectangle HeaderCellScreenRect(int col)
+        {
+            if (col < 0 || col >= _columns.Count) return Rectangle.Empty;
+            EnsureLayout();
+            int cx = _headerRect.Left - _scrollX;
+            for (int i = 0; i < col; i++) cx += _columns[i].Width;
+            return RectangleToScreen(new Rectangle(cx, _headerRect.Top, _columns[col].Width, _headerRect.Height));
+        }
+
+        /// <summary>접근성에서 행 하나만 선택(단일 선택 경로와 동일).</summary>
+        private void AccessibleSelectRow(int row)
+        {
+            if (row < 0 || row >= _rows.Count) return;
+            SelectOnlyRow(row);
+            _anchor = row; _focusRow = row;
+            EnsureRowVisible(row);
+            Invalidate();
+            RaiseSelectionChanged();
+        }
+
+        /// <summary>접근성에서 체크박스 열의 행 선택을 토글.</summary>
+        private void AccessibleToggleRow(int row)
+        {
+            if (row < 0 || row >= _rows.Count) return;
+            _rows[row].Selected = !_rows[row].Selected;
+            _anchor = row; _focusRow = row;
+            EnsureRowVisible(row);
+            Invalidate();
+            RaiseSelectionChanged();
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new GridAccessibleObject(this);
+        }
+
+        private sealed class GridAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvDataGrid _o;
+            public GridAccessibleObject(AdvDataGrid owner) : base(owner) { _o = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.Table; } }
+
+            private int HeaderOffset { get { return _o.HasHeaderRow ? 1 : 0; } }
+
+            public override int GetChildCount() { return HeaderOffset + _o._rows.Count; }
+
+            public override AccessibleObject GetChild(int index)
+            {
+                if (index < 0) return null;
+                if (_o.HasHeaderRow && index == 0) return new HeaderRowAccessibleObject(_o);
+                int r = index - HeaderOffset;
+                return r >= 0 && r < _o._rows.Count ? new DataRowAccessibleObject(_o, r) : null;
+            }
+
+            public override AccessibleObject GetSelected()
+            {
+                for (int i = 0; i < _o._rows.Count; i++)
+                    if (_o._rows[i].Selected) return new DataRowAccessibleObject(_o, i);
+                return null;
+            }
+
+            // ── 머리글 행 ────────────────────────────────────────────
+            private sealed class HeaderRowAccessibleObject : AccessibleObject
+            {
+                private readonly AdvDataGrid _o;
+                public HeaderRowAccessibleObject(AdvDataGrid o) { _o = o; }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role { get { return AccessibleRole.Row; } }
+                public override Rectangle Bounds { get { return _o.HeaderScreenRect(); } }
+                public override int GetChildCount() { return _o._columns.Count; }
+                public override AccessibleObject GetChild(int index)
+                {
+                    return index >= 0 && index < _o._columns.Count
+                        ? new HeaderCellAccessibleObject(_o, index) : null;
+                }
+            }
+
+            private sealed class HeaderCellAccessibleObject : AccessibleObject
+            {
+                private readonly AdvDataGrid _o;
+                private readonly int _c;
+                public HeaderCellAccessibleObject(AdvDataGrid o, int c) { _o = o; _c = c; }
+
+                private AdvGridColumn Col { get { return _o._columns[_c]; } }
+
+                public override AccessibleObject Parent { get { return new HeaderRowAccessibleObject(_o); } }
+                public override AccessibleRole Role { get { return AccessibleRole.ColumnHeader; } }
+                public override string Name { get { return Col.IsCheckBox ? "모두 선택" : Col.Header; } }
+                public override Rectangle Bounds { get { return _o.HeaderCellScreenRect(_c); } }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var s = AccessibleStates.None;
+                        if (Col.IsCheckBox)
+                        {
+                            int st = _o.SelectAllState();   // 0=없음,1=전부,2=일부
+                            if (st == 1) s |= AccessibleStates.Checked;
+                            else if (st == 2) s |= AccessibleStates.Mixed;
+                        }
+                        return s;
+                    }
+                }
+
+                public override string DefaultAction
+                {
+                    get
+                    {
+                        if (Col.IsCheckBox) return "모두 선택 전환";
+                        return Col.Sortable ? "정렬" : null;
+                    }
+                }
+
+                public override void DoDefaultAction()
+                {
+                    if (Col.IsCheckBox) _o.ToggleAll();
+                    else if (Col.Sortable) _o.SortByColumn(_c);
+                }
+            }
+
+            // ── 데이터 행 ────────────────────────────────────────────
+            private sealed class DataRowAccessibleObject : AccessibleObject
+            {
+                private readonly AdvDataGrid _o;
+                private readonly int _r;
+                public DataRowAccessibleObject(AdvDataGrid o, int r) { _o = o; _r = r; }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role { get { return AccessibleRole.Row; } }
+                public override Rectangle Bounds { get { return _o.RowScreenRect(_r); } }
+
+                // 행 포커스 낭독 시 데이터 셀 내용을 이어 읽어 준다(체크박스 열 제외)
+                public override string Name
+                {
+                    get
+                    {
+                        var parts = new List<string>();
+                        for (int c = 0; c < _o._columns.Count; c++)
+                            if (!_o._columns[c].IsCheckBox)
+                            {
+                                string v = _o.GetCell(_r, c);
+                                if (!string.IsNullOrEmpty(v)) parts.Add(v);
+                            }
+                        return parts.Count > 0 ? string.Join(", ", parts) : null;
+                    }
+                }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var s = AccessibleStates.Selectable | AccessibleStates.Focusable;
+                        if (!_o.Enabled) s |= AccessibleStates.Unavailable;
+                        if (_r < _o._rows.Count && _o._rows[_r].Selected)
+                        {
+                            s |= AccessibleStates.Selected;
+                            if (_o.Focused) s |= AccessibleStates.Focused;
+                        }
+                        else if (_r == _o._focusRow && _o.Focused)
+                            s |= AccessibleStates.Focused;
+                        return s;
+                    }
+                }
+
+                public override int GetChildCount() { return _o._columns.Count; }
+                public override AccessibleObject GetChild(int index)
+                {
+                    return index >= 0 && index < _o._columns.Count
+                        ? new DataCellAccessibleObject(_o, _r, index) : null;
+                }
+
+                public override string DefaultAction { get { return "선택"; } }
+                public override void DoDefaultAction() { _o.AccessibleSelectRow(_r); }
+            }
+
+            private sealed class DataCellAccessibleObject : AccessibleObject
+            {
+                private readonly AdvDataGrid _o;
+                private readonly int _r, _c;
+                public DataCellAccessibleObject(AdvDataGrid o, int r, int c) { _o = o; _r = r; _c = c; }
+
+                private AdvGridColumn Col { get { return _o._columns[_c]; } }
+                private bool RowSelected { get { return _r < _o._rows.Count && _o._rows[_r].Selected; } }
+
+                public override AccessibleObject Parent { get { return new DataRowAccessibleObject(_o, _r); } }
+                public override AccessibleRole Role { get { return Col.IsCheckBox ? AccessibleRole.CheckButton : AccessibleRole.Cell; } }
+                public override Rectangle Bounds { get { return _o.CellScreenRect(_r, _c); } }
+
+                public override string Name
+                {
+                    // 체크박스 셀은 "선택", 데이터 셀은 열 머리글을 이름으로(값은 Value로 읽힌다)
+                    get { return Col.IsCheckBox ? "선택" : Col.Header; }
+                }
+
+                public override string Value
+                {
+                    get { return Col.IsCheckBox ? null : _o.GetCell(_r, _c); }
+                }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var s = AccessibleStates.None;
+                        if (!_o.Enabled) s |= AccessibleStates.Unavailable;
+                        if (Col.IsCheckBox)
+                        {
+                            s |= AccessibleStates.Selectable | AccessibleStates.Focusable;
+                            if (RowSelected) s |= AccessibleStates.Checked;
+                        }
+                        else if (RowSelected) s |= AccessibleStates.Selected;
+                        return s;
+                    }
+                }
+
+                public override string DefaultAction { get { return Col.IsCheckBox ? "선택 전환" : null; } }
+                public override void DoDefaultAction()
+                {
+                    if (Col.IsCheckBox) _o.AccessibleToggleRow(_r);
+                }
+            }
         }
 
         protected override void Dispose(bool disposing)

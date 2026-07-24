@@ -141,7 +141,7 @@ namespace AdvancedControls.Controls
                 Math.Max(0, bounds.Width - bw * 2 - Padding.Horizontal),
                 Math.Max(0, bounds.Height - bw * 2 - Padding.Vertical));
 
-            const int chevW = 16;
+            int chevW = AdvGraphics.Scale(this, 16);
             var chevRect = new Rectangle(content.Right - chevW, content.Top, chevW, content.Height);
             var textRect = new Rectangle(content.Left, content.Top,
                                          Math.Max(0, content.Width - chevW - 4), content.Height);
@@ -150,7 +150,7 @@ namespace AdvancedControls.Controls
                 TextRenderer.DrawText(g, Text, Font, textRect, fore,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
-            AdvGraphics.DrawChevron(g, chevRect, AdvGraphics.ChevronDirection.Down, fore, 8, 5, 1.6f, 0);
+            AdvGraphics.DrawChevron(g, this, chevRect, AdvGraphics.ChevronDirection.Down, fore, 8, 5, 1.6f, 0);
 
             base.OnPaint(e);
         }

@@ -120,7 +120,7 @@ namespace AdvancedControls.Controls
         private int AutoWidth(AdvStatusPanel p)
         {
             if (p.ShowProgress) return ProgW;
-            int iw = p.Image != null ? IconSize : 0;
+            int iw = p.Image != null ? AdvGraphics.Scale(this, IconSize) : 0;
             int tw = p.TextW;
             return PadX * 2 + iw + (iw > 0 && tw > 0 ? Gap : 0) + tw;
         }
@@ -199,7 +199,8 @@ namespace AdvancedControls.Controls
 
         private void DrawTextPanel(Graphics g, AdvTheme theme, AdvStatusPanel p)
         {
-            int iw = p.Image != null ? IconSize : 0;
+            int icon = AdvGraphics.Scale(this, IconSize);
+            int iw = p.Image != null ? icon : 0;
             int tw = p.TextW;
             int mid = iw + (iw > 0 && tw > 0 ? Gap : 0) + tw;
 
@@ -215,9 +216,9 @@ namespace AdvancedControls.Controls
 
             if (p.Image != null)
             {
-                var ir = new Rectangle(startX, p.Rect.Top + (p.Rect.Height - IconSize) / 2, IconSize, IconSize);
+                var ir = new Rectangle(startX, p.Rect.Top + (p.Rect.Height - icon) / 2, icon, icon);
                 g.DrawImage(p.Image, ir);
-                startX += IconSize + (tw > 0 ? Gap : 0);
+                startX += icon + (tw > 0 ? Gap : 0);
             }
 
             if (tw > 0)
@@ -249,6 +250,71 @@ namespace AdvancedControls.Controls
                 using (var fb = new SolidBrush(theme.Accent))
                 using (var path = AdvGraphics.CreateRoundedRect(fill, new AdvCorners(ProgH / 2)))
                     g.FillPath(fb, path);
+            }
+        }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        /// <summary>접근성 Bounds용으로 칸 사각형을 최신화한다(아직 안 그려졌으면 측정만 수행).</summary>
+        private void EnsurePanelLayout()
+        {
+            if (IsHandleCreated)
+            {
+                using (var g = CreateGraphics()) LayoutPanels(g);
+            }
+            else
+            {
+                using (var bmp = new Bitmap(1, 1))
+                using (var g = Graphics.FromImage(bmp)) LayoutPanels(g);
+            }
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new StatusBarAccessibleObject(this);
+        }
+
+        private sealed class StatusBarAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvStatusBar _owner;
+            public StatusBarAccessibleObject(AdvStatusBar owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.StatusBar; } }
+            public override int GetChildCount() { return _owner._panels.Count; }
+            public override AccessibleObject GetChild(int index)
+            {
+                return index >= 0 && index < _owner._panels.Count
+                    ? new PanelAccessibleObject(_owner, index) : null;
+            }
+
+            private sealed class PanelAccessibleObject : AccessibleObject
+            {
+                private readonly AdvStatusBar _o;
+                private readonly int _i;
+                public PanelAccessibleObject(AdvStatusBar o, int i) { _o = o; _i = i; }
+
+                private AdvStatusPanel P { get { return _o._panels[_i]; } }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role
+                {
+                    get { return P.ShowProgress ? AccessibleRole.ProgressBar : AccessibleRole.StaticText; }
+                }
+
+                public override string Name { get { return P.Text; } }
+
+                // 진행률 칸은 값을 백분율로 읽어 준다
+                public override string Value
+                {
+                    get { return P.ShowProgress ? P.Progress + "%" : null; }
+                }
+
+                public override AccessibleStates State { get { return AccessibleStates.ReadOnly; } }
+
+                public override Rectangle Bounds
+                {
+                    get { _o.EnsurePanelLayout(); return _o.RectangleToScreen(P.Rect); }
+                }
             }
         }
     }

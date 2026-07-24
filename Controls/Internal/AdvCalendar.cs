@@ -265,12 +265,12 @@ namespace AdvancedControls.Controls.Internal
             if (year)
             {
                 // 겹친 셰브론 두 개(«, »)로 년 이동을 나타낸다
-                AdvGraphics.DrawChevron(g, area, dir, color, 8, 4, 1.5f, -3);
-                AdvGraphics.DrawChevron(g, area, dir, color, 8, 4, 1.5f, 2);
+                AdvGraphics.DrawChevron(g, this, area, dir, color, 8, 4, 1.5f, -3);
+                AdvGraphics.DrawChevron(g, this, area, dir, color, 8, 4, 1.5f, 2);
             }
             else
             {
-                AdvGraphics.DrawChevron(g, area, dir, color, 8, 5, 1.6f, 0);
+                AdvGraphics.DrawChevron(g, this, area, dir, color, 8, 5, 1.6f, 0);
             }
         }
 

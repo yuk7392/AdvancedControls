@@ -506,7 +506,8 @@ namespace AdvancedControls.Controls
             get
             {
                 var c = ContentBounds;
-                return new Rectangle(c.Right - ArrowAreaWidth, c.Top, ArrowAreaWidth, c.Height);
+                int aw = AdvGraphics.Scale(this, ArrowAreaWidth);
+                return new Rectangle(c.Right - aw, c.Top, aw, c.Height);
             }
         }
 
@@ -515,8 +516,9 @@ namespace AdvancedControls.Controls
             get
             {
                 var c = ContentBounds;
+                int aw = AdvGraphics.Scale(this, ArrowAreaWidth);
                 return new Rectangle(c.Left, c.Top,
-                                     Math.Max(0, c.Width - ArrowAreaWidth - 4), c.Height);
+                                     Math.Max(0, c.Width - aw - 4), c.Height);
             }
         }
 
@@ -781,9 +783,9 @@ namespace AdvancedControls.Controls
             base.OnPaint(e);
         }
 
-        private static void DrawArrow(Graphics g, Rectangle area, Color color)
+        private void DrawArrow(Graphics g, Rectangle area, Color color)
         {
-            AdvGraphics.DrawChevron(g, area, AdvGraphics.ChevronDirection.Down, color,
+            AdvGraphics.DrawChevron(g, this, area, AdvGraphics.ChevronDirection.Down, color,
                                     9, 5, 1.6f, 0);
         }
 

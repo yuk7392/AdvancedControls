@@ -139,7 +139,7 @@ namespace AdvancedControls.Controls
                 {
                     int tw = string.IsNullOrEmpty(it.Text) ? 0 : TextRenderer.MeasureText(g, it.Text, Font).Width;
                     it.TextW = tw;   // 그리기 루프가 재사용(매 페인트 재측정 방지)
-                    int iw = it.Image != null ? IconSize : 0;
+                    int iw = it.Image != null ? AdvGraphics.Scale(this, IconSize) : 0;
                     int mid = iw + (iw > 0 && tw > 0 ? Gap : 0) + tw;
                     w = PadX * 2 + mid;
                 }
@@ -233,17 +233,18 @@ namespace AdvancedControls.Controls
 
                 Color fg = !it.Enabled ? theme.TextDisabled : active ? theme.OnAccent : theme.Text;
 
-                int iw = it.Image != null ? IconSize : 0;
+                int icon = AdvGraphics.Scale(this, IconSize);
+                int iw = it.Image != null ? icon : 0;
                 int tw = it.TextW;   // LayoutItems에서 이미 측정
                 int mid = iw + (iw > 0 && tw > 0 ? Gap : 0) + tw;
                 int startX = it.Rect.Left + (it.Rect.Width - mid) / 2;
 
                 if (it.Image != null)
                 {
-                    var ir = new Rectangle(startX, it.Rect.Top + (it.Rect.Height - IconSize) / 2, IconSize, IconSize);
+                    var ir = new Rectangle(startX, it.Rect.Top + (it.Rect.Height - icon) / 2, icon, icon);
                     if (it.Enabled) g.DrawImage(it.Image, ir);
                     else DrawDisabledImage(g, it.Image, ir);
-                    startX += IconSize + (tw > 0 ? Gap : 0);
+                    startX += icon + (tw > 0 ? Gap : 0);
                 }
 
                 if (tw > 0)
@@ -320,6 +321,12 @@ namespace AdvancedControls.Controls
             var h = ItemClicked;
             if (h != null) h(this, new AdvToolBarItemEventArgs(it));
             Invalidate();
+            // 토글 상태 변경을 스크린리더에 알린다. childID = 항목 인덱스.
+            if (it.IsToggle)
+            {
+                int idx = _items.IndexOf(it);
+                if (idx >= 0) AccessibilityNotifyClients(AccessibleEvents.StateChange, idx);
+            }
         }
 
         // ── 키보드 ────────────────────────────────────────────────────
@@ -364,7 +371,13 @@ namespace AdvancedControls.Controls
                 i += dir;
                 if (i < 0) i = _items.Count - 1;
                 if (i >= _items.Count) i = 0;
-                if (!_items[i].IsSeparator && _items[i].Enabled) { _focused = i; Invalidate(); return; }
+                if (!_items[i].IsSeparator && _items[i].Enabled)
+                {
+                    _focused = i; Invalidate();
+                    // 키보드 포커스 이동을 스크린리더에 알린다. childID = 항목 인덱스.
+                    if (Focused) AccessibilityNotifyClients(AccessibleEvents.Focus, i);
+                    return;
+                }
             }
         }
 
@@ -386,6 +399,115 @@ namespace AdvancedControls.Controls
             base.OnFontChanged(e);
             _layoutDirty = true;   // 글꼴이 바뀌면 항목 폭 재측정
             Invalidate();
+        }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        /// <summary>접근성 Bounds용으로 항목 사각형이 최신인지 보장한다(아직 안 그려졌으면 측정만 수행).
+        /// OnPaint의 개수 변화 정리 로직을 건드리지 않도록 _lastItemCount는 갱신하지 않는다.</summary>
+        private void EnsureItemLayout()
+        {
+            if (!_layoutDirty && _lastItemCount == _items.Count) return;
+            if (IsHandleCreated)
+            {
+                using (var g = CreateGraphics()) LayoutItems(g);
+            }
+            else
+            {
+                using (var bmp = new Bitmap(1, 1))
+                using (var g = Graphics.FromImage(bmp)) LayoutItems(g);
+            }
+            _layoutDirty = false;
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new ToolBarAccessibleObject(this);
+        }
+
+        private sealed class ToolBarAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvToolBar _owner;
+            public ToolBarAccessibleObject(AdvToolBar owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.ToolBar; } }
+            public override int GetChildCount() { return _owner._items.Count; }
+            public override AccessibleObject GetChild(int index)
+            {
+                return index >= 0 && index < _owner._items.Count
+                    ? new ItemAccessibleObject(_owner, index) : null;
+            }
+
+            private sealed class ItemAccessibleObject : AccessibleObject
+            {
+                private readonly AdvToolBar _o;
+                private readonly int _i;
+                public ItemAccessibleObject(AdvToolBar o, int i) { _o = o; _i = i; }
+
+                private AdvToolBarItem It { get { return _o._items[_i]; } }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+
+                public override AccessibleRole Role
+                {
+                    get
+                    {
+                        var it = It;
+                        if (it.IsSeparator) return AccessibleRole.Separator;
+                        return it.IsToggle ? AccessibleRole.CheckButton : AccessibleRole.PushButton;
+                    }
+                }
+
+                public override string Name
+                {
+                    get
+                    {
+                        var it = It;
+                        if (it.IsSeparator) return null;
+                        // 아이콘 전용 버튼은 텍스트가 없으므로 툴팁을 이름으로 쓴다
+                        return !string.IsNullOrEmpty(it.Text) ? it.Text : it.ToolTipText;
+                    }
+                }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var it = It;
+                        if (it.IsSeparator) return AccessibleStates.None;
+                        var s = AccessibleStates.Focusable;
+                        if (!it.Enabled) s |= AccessibleStates.Unavailable;
+                        if (it.IsToggle && it.Checked) s |= AccessibleStates.Checked | AccessibleStates.Pressed;
+                        if (_i == _o._focused && _o.Focused) s |= AccessibleStates.Focused;
+                        return s;
+                    }
+                }
+
+                public override Rectangle Bounds
+                {
+                    get
+                    {
+                        _o.EnsureItemLayout();
+                        return _o.RectangleToScreen(It.Rect);
+                    }
+                }
+
+                public override string DefaultAction
+                {
+                    get
+                    {
+                        var it = It;
+                        if (it.IsSeparator || !it.Enabled) return null;
+                        return it.IsToggle ? "전환" : "누르기";
+                    }
+                }
+
+                public override void DoDefaultAction()
+                {
+                    var it = It;
+                    if (!it.IsSeparator && it.Enabled) _o.Activate(it);
+                }
+            }
         }
 
         protected override void Dispose(bool disposing)

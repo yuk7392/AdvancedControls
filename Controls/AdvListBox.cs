@@ -387,7 +387,7 @@ namespace AdvancedControls.Controls
             /// <summary>체크박스가 차지하는 왼쪽 폭(체크박스가 없으면 0).</summary>
             private int CheckGutter
             {
-                get { return ShowCheckBoxes ? CheckLeftPad + CheckBoxSize : 0; }
+                get { return ShowCheckBoxes ? AdvGraphics.Scale(this, CheckLeftPad + CheckBoxSize) : 0; }
             }
 
             public bool IsChecked(int index)
@@ -410,6 +410,7 @@ namespace AdvancedControls.Controls
 
                 Invalidate();
                 if (raise) RaiseCheck();
+                NotifyAccStateChange(index);
             }
 
             private void ToggleCheck(int index)
@@ -418,6 +419,7 @@ namespace AdvancedControls.Controls
                 if (!_checked.Remove(index)) _checked.Add(index);
                 Invalidate();
                 RaiseCheck();
+                NotifyAccStateChange(index);
             }
 
             private void RaiseCheck()
@@ -564,12 +566,28 @@ namespace AdvancedControls.Controls
                 Invalidate();
                 if (index >= 0) _owner.EnsureVisible(index);
                 if (raise) Raise();
+                NotifyAccFocus(index);
             }
 
             private void Raise()
             {
                 var handler = SelectionChanged;
                 if (handler != null) handler(this, EventArgs.Empty);
+            }
+
+            // 키보드/프로그램 선택 이동을 스크린리더에 라이브로 알린다.
+            // AccessibilityNotifyClients는 내부적으로 childID+1을 NotifyWinEvent로 보내고,
+            // MSAA는 이를 GetChild(childID)로 되돌리므로 0-based 인덱스를 그대로 넘긴다.
+            private void NotifyAccFocus(int index)
+            {
+                if (index < 0 || !Focused) return;   // 포커스가 없을 땐 알리지 않는다(엉뚱한 낭독 방지)
+                AccessibilityNotifyClients(AccessibleEvents.Focus, index);
+                AccessibilityNotifyClients(AccessibleEvents.Selection, index);
+            }
+
+            private void NotifyAccStateChange(int index)
+            {
+                if (index >= 0) AccessibilityNotifyClients(AccessibleEvents.StateChange, index);
             }
 
             private int IndexFromPoint(Point p)
@@ -636,31 +654,34 @@ namespace AdvancedControls.Controls
             /// </summary>
             private void DrawItemCheckBox(Graphics g, Rectangle row, bool isChecked, AdvTheme theme)
             {
-                int y = row.Y + (row.Height - CheckBoxSize) / 2;
-                var box = new Rectangle(row.X + CheckLeftPad, y, CheckBoxSize, CheckBoxSize);
+                int sz = AdvGraphics.Scale(this, CheckBoxSize);
+                int pad = AdvGraphics.Scale(this, CheckLeftPad);
+                int y = row.Y + (row.Height - sz) / 2;
+                var box = new Rectangle(row.X + pad, y, sz, sz);
 
                 var oldSmooth = g.SmoothingMode;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
 
-                using (var path = AdvGraphics.CreateRoundedRect(box, 3))
+                using (var path = AdvGraphics.CreateRoundedRect(box, AdvGraphics.Scale(this, 3)))
                 {
                     using (var b = new SolidBrush(_owner.Enabled ? theme.InputBackground : theme.InputBackgroundDisabled))
                         g.FillPath(b, path);
                     Color line = !_owner.Enabled ? theme.TextDisabled : (isChecked ? theme.Accent : theme.Border);
-                    using (var pen = new Pen(line, isChecked ? 1.4f : 1f))
+                    using (var pen = new Pen(line, AdvGraphics.Scale(this, isChecked ? 1.4f : 1f)))
                         g.DrawPath(pen, path);
                 }
 
                 if (isChecked)
                 {
-                    var inner = Rectangle.Inflate(box, -4, -4);
+                    int ins = AdvGraphics.Scale(this, 4);
+                    var inner = Rectangle.Inflate(box, -ins, -ins);
                     var pts = new[]
                     {
                         new Point(inner.Left, inner.Top + inner.Height / 2),
                         new Point(inner.Left + inner.Width * 2 / 5, inner.Bottom),
                         new Point(inner.Right, inner.Top)
                     };
-                    using (var pen = new Pen(_owner.Enabled ? theme.Accent : theme.TextDisabled, 1.8f)
+                    using (var pen = new Pen(_owner.Enabled ? theme.Accent : theme.TextDisabled, AdvGraphics.Scale(this, 1.8f))
                     { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
                         g.DrawLines(pen, pts);
                 }
@@ -717,6 +738,7 @@ namespace AdvancedControls.Controls
 
                     Invalidate();
                     Raise();
+                    NotifyAccFocus(_primary);
                 }
                 else
                 {
@@ -737,6 +759,7 @@ namespace AdvancedControls.Controls
                 Invalidate();
                 _owner.EnsureVisible(to);
                 Raise();
+                NotifyAccFocus(to);
             }
 
             protected override bool IsInputKey(Keys keyData)
@@ -802,6 +825,111 @@ namespace AdvancedControls.Controls
 
             protected override void OnGotFocus(EventArgs e) { _owner.Invalidate(); base.OnGotFocus(e); }
             protected override void OnLostFocus(EventArgs e) { _owner.Invalidate(); base.OnLostFocus(e); }
+
+            // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+            // 포커스가 이 안쪽 컨트롤에 오므로 항목 트리도 여기에 붙인다(바깥 AdvListBox가 아니라).
+
+            protected override AccessibleObject CreateAccessibilityInstance()
+            {
+                return new ListAccessibleObject(this);
+            }
+
+            private sealed class ListAccessibleObject : ControlAccessibleObject
+            {
+                private readonly ListCore _core;
+                public ListAccessibleObject(ListCore core) : base(core) { _core = core; }
+
+                public override AccessibleRole Role { get { return AccessibleRole.List; } }
+
+                // 이름은 바깥 호스트(AdvListBox)의 AccessibleName을 따른다
+                public override string Name
+                {
+                    get
+                    {
+                        var n = _core._owner.AccessibleName;
+                        return !string.IsNullOrEmpty(n) ? n : base.Name;
+                    }
+                    set { base.Name = value; }
+                }
+
+                public override int GetChildCount() { return _core._items.Count; }
+
+                public override AccessibleObject GetChild(int index)
+                {
+                    return index >= 0 && index < _core._items.Count
+                        ? new ItemAccessibleObject(_core, index) : null;
+                }
+
+                public override AccessibleObject GetSelected()
+                {
+                    int p = _core._primary;
+                    return p >= 0 && p < _core._items.Count ? new ItemAccessibleObject(_core, p) : null;
+                }
+
+                private sealed class ItemAccessibleObject : AccessibleObject
+                {
+                    private readonly ListCore _c;
+                    private readonly int _i;
+                    public ItemAccessibleObject(ListCore c, int i) { _c = c; _i = i; }
+
+                    public override AccessibleObject Parent { get { return _c.AccessibilityObject; } }
+                    public override AccessibleRole Role { get { return AccessibleRole.ListItem; } }
+
+                    public override string Name
+                    {
+                        get
+                        {
+                            if (_i < 0 || _i >= _c._items.Count) return null;
+                            var item = _c._items[_i];
+                            return item == null ? string.Empty : item.ToString();
+                        }
+                    }
+
+                    public override AccessibleStates State
+                    {
+                        get
+                        {
+                            var s = AccessibleStates.Selectable | AccessibleStates.Focusable;
+                            if (!_c._owner.Enabled) s |= AccessibleStates.Unavailable;
+                            if (_c._selected.Contains(_i)) s |= AccessibleStates.Selected;
+                            if (_i == _c._primary && _c.Focused) s |= AccessibleStates.Focused;
+                            if (_c.ShowCheckBoxes)
+                                s |= _c._checked.Contains(_i) ? AccessibleStates.Checked : AccessibleStates.None;
+                            return s;
+                        }
+                    }
+
+                    public override Rectangle Bounds
+                    {
+                        get
+                        {
+                            int h = _c.ItemHeight;
+                            if (h <= 0) return Rectangle.Empty;
+                            // 코어는 스크롤을 위해 Top이 음수로 밀려 있고, RectangleToScreen이 이를 반영한다
+                            return _c.RectangleToScreen(new Rectangle(0, _i * h, _c.Width, h));
+                        }
+                    }
+
+                    // 체크박스 목록은 체크 토글이, 일반 목록은 선택이 기본 동작이다
+                    // (컨트롤의 Space 키 동작과 일치)
+                    public override string DefaultAction
+                    {
+                        get
+                        {
+                            if (_c.ShowCheckBoxes)
+                                return _c._checked.Contains(_i) ? "선택 해제" : "선택";
+                            return "선택";
+                        }
+                    }
+
+                    public override void DoDefaultAction()
+                    {
+                        if (_i < 0 || _i >= _c._items.Count) return;
+                        if (_c.ShowCheckBoxes) _c.ToggleCheck(_i);
+                        else _c.SelectSingle(_i, true);
+                    }
+                }
+            }
         }
 
         /// <summary>항목 목록. 변경되면 선택과 배치를 바로잡는다.</summary>

@@ -272,7 +272,7 @@ namespace AdvancedControls.Controls
                     _maximum.ToString(NumberFormat, CultureInfo.CurrentCulture), Font).Width;
 
                 return Math.Max(lo, hi)
-                     + 4 + SpinWidth                    // TextBounds가 증감 영역에 내주는 몫
+                     + 4 + AdvGraphics.Scale(this, SpinWidth)   // TextBounds가 증감 영역에 내주는 몫
                      + PrefixWidth + SuffixWidth        // 접두·접미 문구 몫
                      + ChromeSize.Width;
             }
@@ -326,7 +326,8 @@ namespace AdvancedControls.Controls
             get
             {
                 var c = ContentBounds;
-                return new Rectangle(c.Right - SpinWidth, c.Top, SpinWidth, c.Height);
+                int sw = AdvGraphics.Scale(this, SpinWidth);
+                return new Rectangle(c.Right - sw, c.Top, sw, c.Height);
             }
         }
 
@@ -355,7 +356,7 @@ namespace AdvancedControls.Controls
             {
                 var c = ContentBounds;
                 return new Rectangle(c.Left, c.Top,
-                                     Math.Max(0, c.Width - SpinWidth - 4), c.Height);
+                                     Math.Max(0, c.Width - AdvGraphics.Scale(this, SpinWidth) - 4), c.Height);
             }
         }
 
@@ -490,7 +491,7 @@ namespace AdvancedControls.Controls
             // 높이를 줄이고 맞물리는 쪽에서 서로 1px씩 밀어 두 개의 화살표로 보이게 한다
             const int seam = 1;
 
-            AdvGraphics.DrawChevron(g, area,
+            AdvGraphics.DrawChevron(g, this, area,
                 up ? AdvGraphics.ChevronDirection.Up : AdvGraphics.ChevronDirection.Down,
                 color, 7, 3, 1.5f, up ? -seam : seam);
         }

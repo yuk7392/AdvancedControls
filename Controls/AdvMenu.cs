@@ -88,6 +88,7 @@ namespace AdvancedControls.Controls
         }
 
         private readonly List<Col> _cols = new List<Col>();
+        private int _lastFlatCount = -1;   // 접근성: 평면 자식 수 변화 감지(Reorder 통지용)
 
         public event Action<AdvMenuItem> ItemChosen;
         public event Action CloseRequested;
@@ -121,7 +122,7 @@ namespace AdvancedControls.Controls
                     if (it.IsSeparator) continue;
                     int tw = TextRenderer.MeasureText(it.Text ?? "", sf).Width;
                     int extra = it.HasChildren
-                        ? ChevW
+                        ? AdvGraphics.Scale(this, ChevW)
                         : (string.IsNullOrEmpty(it.Shortcut) ? 0 : ShortcutGap + TextRenderer.MeasureText(it.Shortcut, sf).Width);
                     w = Math.Max(w, TextLeft + tw + extra + RightPad);
                 }
@@ -186,6 +187,13 @@ namespace AdvancedControls.Controls
             var h2 = LayoutResized;
             if (h2 != null) h2();
             Invalidate();
+
+            // 열린 칸 수가 바뀌어 평면 자식 집합이 달라지면 스크린리더에 재구성을 알린다
+            if (IsHandleCreated)
+            {
+                int fc = FlatItemCount();
+                if (fc != _lastFlatCount) { _lastFlatCount = fc; AccessibilityNotifyClients(AccessibleEvents.Reorder, -1); }
+            }
         }
 
         // ── 그리기 ────────────────────────────────────────────────────
@@ -230,9 +238,9 @@ namespace AdvancedControls.Controls
 
                 if (it.HasChildren)
                 {
-                    var chev = new Rectangle(b.Right - RightPad + 4, r.Top, ChevW, ItemH);
+                    var chev = new Rectangle(b.Right - RightPad + 4, r.Top, AdvGraphics.Scale(this, ChevW), ItemH);
                     Color cc = !it.Enabled ? theme.TextDisabled : hot ? theme.OnAccent : theme.TextMuted;
-                    AdvGraphics.DrawChevron(g, chev, AdvGraphics.ChevronDirection.Right, cc, 7, 4, 1.4f, 0);
+                    AdvGraphics.DrawChevron(g, this, chev, AdvGraphics.ChevronDirection.Right, cc, 7, 4, 1.4f, 0);
                 }
                 else if (!string.IsNullOrEmpty(it.Shortcut))
                 {
@@ -385,7 +393,12 @@ namespace AdvancedControls.Controls
                 i += dir;
                 if (i < 0) i = col.Items.Count - 1;
                 if (i >= col.Items.Count) i = 0;
-                if (!col.Items[i].IsSeparator && col.Items[i].Enabled) { col.Hover = i; Invalidate(); return; }
+                if (!col.Items[i].IsSeparator && col.Items[i].Enabled)
+                {
+                    col.Hover = i; Invalidate();
+                    NotifyMenuAccFocus(col);   // 호버 이동을 스크린리더에 라이브로 알린다
+                    return;
+                }
             }
         }
 
@@ -393,6 +406,155 @@ namespace AdvancedControls.Controls
         {
             var h = ItemChosen;
             if (h != null) h(it);
+        }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+        // 보이는 항목 평면 모델: 팝업(MenuPopup)의 직접 자식 = 현재 열린 모든 칸의 항목을 칸 순서대로
+        // 이어붙인 평면 리스트. 이래야 MSAA 단일 childID(= 평면 인덱스)로 호버 이동을 라이브로 정확히
+        // 지정할 수 있다. 서브메뉴 항목은 그 칸이 열려야 리스트에 나타난다(네이티브 메뉴와 동일).
+
+        private int FlatItemCount()
+        {
+            int n = 0;
+            foreach (var col in _cols) n += col.Items.Count;
+            return n;
+        }
+
+        private bool LocateFlat(int flat, out int colIndex, out int itemIndex)
+        {
+            colIndex = itemIndex = -1;
+            if (flat < 0) return false;
+            for (int c = 0; c < _cols.Count; c++)
+            {
+                int n = _cols[c].Items.Count;
+                if (flat < n) { colIndex = c; itemIndex = flat; return true; }
+                flat -= n;
+            }
+            return false;
+        }
+
+        private int FlatIndexOf(int colIndex, int itemIndex)
+        {
+            int baseIdx = 0;
+            for (int c = 0; c < colIndex && c < _cols.Count; c++) baseIdx += _cols[c].Items.Count;
+            return baseIdx + itemIndex;
+        }
+
+        private Rectangle ItemScreenRectAt(int colIndex, int itemIndex)
+        {
+            if (colIndex < 0 || colIndex >= _cols.Count) return Rectangle.Empty;
+            return RectangleToScreen(ItemRect(_cols[colIndex], itemIndex));
+        }
+
+        /// <summary>부모 항목의 서브메뉴 칸을 연다(접근성 기본 동작·키보드 공통 경로).</summary>
+        private void OpenSubmenuFor(int colIndex, int itemIndex)
+        {
+            if (colIndex < 0 || colIndex >= _cols.Count) return;
+            var col = _cols[colIndex];
+            if (itemIndex < 0 || itemIndex >= col.Items.Count) return;
+            var it = col.Items[itemIndex];
+            if (!it.HasChildren || col.OpenChild == itemIndex) return;
+            TruncateTo(colIndex);
+            col.Hover = itemIndex;
+            col.OpenChild = itemIndex;
+            _cols.Add(new Col(it.ChildList));
+            LayoutColumns();
+        }
+
+        /// <summary>호버(키보드 선택) 이동을 스크린리더에 라이브로 알린다. childID = 평면 인덱스.</summary>
+        private void NotifyMenuAccFocus(Col col)
+        {
+            if (!Focused || col.Hover < 0) return;
+            int colIndex = _cols.IndexOf(col);
+            if (colIndex < 0) return;
+            AccessibilityNotifyClients(AccessibleEvents.Focus, FlatIndexOf(colIndex, col.Hover));
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new MenuAccessibleObject(this);
+        }
+
+        private sealed class MenuAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvMenuView _view;
+            public MenuAccessibleObject(AdvMenuView view) : base(view) { _view = view; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.MenuPopup; } }
+            public override int GetChildCount() { return _view.FlatItemCount(); }
+            public override AccessibleObject GetChild(int index)
+            {
+                int c, i;
+                return _view.LocateFlat(index, out c, out i) ? new MenuItemAccessibleObject(_view, c, i) : null;
+            }
+
+            public override AccessibleObject GetSelected()
+            {
+                // 가장 깊은(활성) 칸의 호버 항목이 현재 선택이다
+                for (int c = _view._cols.Count - 1; c >= 0; c--)
+                    if (_view._cols[c].Hover >= 0) return new MenuItemAccessibleObject(_view, c, _view._cols[c].Hover);
+                return null;
+            }
+
+            public override AccessibleObject GetFocused() { return GetSelected(); }
+        }
+
+        private sealed class MenuItemAccessibleObject : AccessibleObject
+        {
+            private readonly AdvMenuView _view;
+            private readonly int _c, _i;
+            public MenuItemAccessibleObject(AdvMenuView view, int c, int i) { _view = view; _c = c; _i = i; }
+
+            private bool Valid { get { return _c >= 0 && _c < _view._cols.Count && _i >= 0 && _i < _view._cols[_c].Items.Count; } }
+            private AdvMenuItem It { get { return _view._cols[_c].Items[_i]; } }
+
+            public override AccessibleObject Parent { get { return _view.AccessibilityObject; } }
+            public override AccessibleRole Role
+            {
+                get { return (!Valid || It.IsSeparator) ? AccessibleRole.Separator : AccessibleRole.MenuItem; }
+            }
+
+            public override string Name { get { return (Valid && !It.IsSeparator) ? It.Text : null; } }
+            public override string KeyboardShortcut { get { return Valid ? It.Shortcut : null; } }
+
+            public override AccessibleStates State
+            {
+                get
+                {
+                    if (!Valid) return AccessibleStates.None;
+                    var it = It;
+                    if (it.IsSeparator) return AccessibleStates.None;
+                    var s = AccessibleStates.Focusable | AccessibleStates.Selectable;
+                    if (!it.Enabled) s |= AccessibleStates.Unavailable;
+                    if (it.HasChildren) s |= AccessibleStates.HasPopup;
+                    var col = _view._cols[_c];
+                    if (col.Hover == _i) s |= AccessibleStates.Focused | AccessibleStates.Selected | AccessibleStates.HotTracked;
+                    if (col.OpenChild == _i) s |= AccessibleStates.Expanded;
+                    return s;
+                }
+            }
+
+            public override Rectangle Bounds { get { return Valid ? _view.ItemScreenRectAt(_c, _i) : Rectangle.Empty; } }
+
+            public override string DefaultAction
+            {
+                get
+                {
+                    if (!Valid) return null;
+                    var it = It;
+                    if (it.IsSeparator || !it.Enabled) return null;
+                    return it.HasChildren ? "펼치기" : "실행";
+                }
+            }
+
+            public override void DoDefaultAction()
+            {
+                if (!Valid) return;
+                var it = It;
+                if (it.IsSeparator || !it.Enabled) return;
+                if (it.HasChildren) _view.OpenSubmenuFor(_c, _i);
+                else _view.Choose(it);
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -704,6 +866,79 @@ namespace AdvancedControls.Controls
             _justClosedAt = Environment.TickCount;
             _open = -1;
             Invalidate();
+        }
+
+        // ── 접근성(스크린리더/UI Automation) ─────────────────────────
+
+        /// <summary>접근성 Bounds용으로 타이틀 사각형을 최신화한다(아직 안 그려졌으면 측정만 수행).</summary>
+        private void EnsureTitleLayout()
+        {
+            if (!_titlesDirty) return;
+            if (IsHandleCreated)
+            {
+                using (var g = CreateGraphics()) LayoutTitles(g);
+            }
+            else
+            {
+                using (var bmp = new Bitmap(1, 1))
+                using (var g = Graphics.FromImage(bmp)) LayoutTitles(g);
+            }
+            _titlesDirty = false;
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new MenuBarAccessibleObject(this);
+        }
+
+        private sealed class MenuBarAccessibleObject : ControlAccessibleObject
+        {
+            private readonly AdvMenuBar _owner;
+            public MenuBarAccessibleObject(AdvMenuBar owner) : base(owner) { _owner = owner; }
+
+            public override AccessibleRole Role { get { return AccessibleRole.MenuBar; } }
+            public override int GetChildCount() { return _owner._menus.Count; }
+            public override AccessibleObject GetChild(int index)
+            {
+                return index >= 0 && index < _owner._menus.Count
+                    ? new TitleAccessibleObject(_owner, index) : null;
+            }
+
+            private sealed class TitleAccessibleObject : AccessibleObject
+            {
+                private readonly AdvMenuBar _o;
+                private readonly int _i;
+                public TitleAccessibleObject(AdvMenuBar o, int i) { _o = o; _i = i; }
+
+                public override AccessibleObject Parent { get { return _o.AccessibilityObject; } }
+                public override AccessibleRole Role { get { return AccessibleRole.MenuItem; } }
+                public override string Name { get { return _o._menus[_i].Title; } }
+
+                public override AccessibleStates State
+                {
+                    get
+                    {
+                        var s = AccessibleStates.Focusable | AccessibleStates.HasPopup;
+                        if (_i == _o._open)
+                            s |= AccessibleStates.Expanded | AccessibleStates.Selected | AccessibleStates.HotTracked;
+                        else if (_i == _o._hover)
+                            s |= AccessibleStates.HotTracked;
+                        return s;
+                    }
+                }
+
+                public override Rectangle Bounds
+                {
+                    get { _o.EnsureTitleLayout(); return _o.RectangleToScreen(_o._menus[_i].Rect); }
+                }
+
+                public override string DefaultAction { get { return _i == _o._open ? "닫기" : "열기"; } }
+                public override void DoDefaultAction()
+                {
+                    if (_i == _o._open) _o.CloseOpen();
+                    else _o.OpenMenu(_i);
+                }
+            }
         }
 
         protected override void Dispose(bool disposing)

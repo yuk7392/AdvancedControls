@@ -89,8 +89,44 @@ namespace AdvancedControls.Rendering
                 Math.Max(0, bounds.Height - borderWidth));
         }
 
+        // ── DPI 스케일 ────────────────────────────────────────────────
+        // 글리프·아이콘 치수는 96dpi 기준 '논리 픽셀'로 두고, 그릴 때 컨트롤이 놓인 화면의
+        // DeviceDpi로 스케일한다. 고DPI에서 글자는 폰트 스케일로 커지는데 글리프가 고정이면
+        // 상대적으로 작아지는 문제(D2)를 없앤다. DeviceDpi를 페인트 시점에 읽으므로 모니터 간
+        // 이동(per-monitor DPI)에도 재페인트로 자기보정된다.
+
+        /// <summary>96dpi 논리 픽셀 → 컨트롤 화면의 실제 픽셀(정수).</summary>
+        public static int Scale(Control c, int logicalPx)
+        {
+            return ScaleDpi(logicalPx, c != null ? c.DeviceDpi : 96);
+        }
+
+        /// <summary>96dpi 논리 픽셀 → 실제 픽셀(실수, 펜 두께 등).</summary>
+        public static float Scale(Control c, float logicalPx)
+        {
+            int dpi = c != null ? c.DeviceDpi : 96;
+            return dpi == 96 ? logicalPx : logicalPx * dpi / 96f;
+        }
+
+        /// <summary>96dpi 논리 픽셀을 지정한 dpi로 스케일한다(스케일 계산 핵심).</summary>
+        public static int ScaleDpi(int logicalPx, int dpi)
+        {
+            return dpi == 96 ? logicalPx : (int)Math.Round(logicalPx * dpi / 96.0);
+        }
+
         /// <summary>셰브런이 향하는 쪽.</summary>
         public enum ChevronDirection { Up, Down, Left, Right }
+
+        /// <summary>
+        /// DPI 대응 셰브런. span·depth·thickness·offset을 컨트롤 DeviceDpi로 스케일한 뒤 그린다.
+        /// area(중심 기준 배치)는 호출자가 이미 스케일해 넘긴다.
+        /// </summary>
+        public static void DrawChevron(Graphics g, Control c, Rectangle area, ChevronDirection dir,
+                                       Color color, int span, int depth, float thickness, int offset)
+        {
+            DrawChevron(g, area, dir, color,
+                        Scale(c, span), Scale(c, depth), Scale(c, thickness), Scale(c, offset));
+        }
 
         /// <summary>
         /// 꺾인 화살표(셰브런)를 area의 가운데에 그린다.
