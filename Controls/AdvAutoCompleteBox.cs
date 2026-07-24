@@ -267,6 +267,7 @@ namespace AdvancedControls.Controls
             _popup.ApplyTheme(EffectiveTheme);
             _popup.List.Font = Font;
             _popup.List.ItemHeight = ItemHeight;
+            _popup.List.HighlightText = Text;   // 제안 항목에서 입력 일치 구간을 강조
             _popup.List.SelectedIndex = -1;
             _popup.List.HoverIndex = -1;
             _popup.SetSize(FrameBounds.Width, _visible.Count, _maxSuggestions);

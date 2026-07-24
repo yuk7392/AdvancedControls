@@ -106,9 +106,11 @@ namespace AdvancedControls.Controls
     {
         private sealed class GridRow
         {
-            public readonly string[] Cells;
+            public string[] Cells;          // 바인딩 행은 null로 시작해 처음 읽힐 때 채운다(행 가상화)
             public bool Selected;
+            public readonly object Item;    // 바인딩 원본 항목(비바인딩 행은 null)
             public GridRow(string[] cells) { Cells = cells; }
+            public GridRow(object item) { Item = item; }
         }
 
         private readonly List<AdvGridColumn> _columns = new List<AdvGridColumn>();
@@ -353,10 +355,29 @@ namespace AdvancedControls.Controls
             if (row < 0 || row >= _rows.Count) return;
             int di = DataIndex(col);
             if (di < 0) return;
-            var cells = _rows[row].Cells;
+            var cells = CellsOf(_rows[row]);
             if (di >= cells.Length) return;
             cells[di] = value;
             Invalidate();
+        }
+
+        /// <summary>행의 셀 스냅숏. 바인딩 행은 처음 읽힐 때 원본에서 실체화한다(행 가상화 —
+        /// 재조회는 행 껍데기만 만들고, 리플렉션 비용은 실제로 보이거나 쓰이는 행에서만 낸다).</summary>
+        private string[] CellsOf(GridRow row)
+        {
+            if (row.Cells == null)
+            {
+                int n = _boundProps != null ? _boundProps.Length : 0;
+                var cells = new string[n];
+                for (int i = 0; i < n; i++)
+                {
+                    var p = _boundProps[i];
+                    object v = (p != null && row.Item != null) ? p.GetValue(row.Item) : null;
+                    cells[i] = v == null ? string.Empty : Convert.ToString(v, CultureInfo.CurrentCulture);
+                }
+                row.Cells = cells;
+            }
+            return row.Cells;
         }
 
         /// <summary>모든 행을 지운다(열은 유지).</summary>
@@ -428,7 +449,7 @@ namespace AdvancedControls.Controls
             if (row < 0 || row >= _rows.Count) return string.Empty;
             int di = DataIndex(col);
             if (di < 0) return string.Empty;
-            var cells = _rows[row].Cells;
+            var cells = CellsOf(_rows[row]);
             return di < cells.Length ? (cells[di] ?? string.Empty) : string.Empty;
         }
 
@@ -587,18 +608,9 @@ namespace AdvancedControls.Controls
             _rows.Clear();
             if (_boundList != null && _boundProps != null)
             {
-                int n = _boundProps.Length;
+                // 행 껍데기만 만든다 — 셀은 CellsOf가 보이는 행에서만 실체화한다(행 가상화).
                 foreach (object item in _boundList)
-                {
-                    var cells = new string[n];
-                    for (int i = 0; i < n; i++)
-                    {
-                        var p = _boundProps[i];
-                        object v = (p != null && item != null) ? p.GetValue(item) : null;
-                        cells[i] = v == null ? string.Empty : Convert.ToString(v, CultureInfo.CurrentCulture);
-                    }
-                    _rows.Add(new GridRow(cells));
-                }
+                    _rows.Add(new GridRow(item));
             }
 
             _hoverRow = _anchor = _focusRow = -1;
@@ -1379,7 +1391,8 @@ namespace AdvancedControls.Controls
             bool numeric = true;
             foreach (var r in _rows)
             {
-                string s = di < r.Cells.Length ? r.Cells[di] : null;
+                var cells = CellsOf(r);   // 정렬은 전 행 값이 필요하므로 여기서 실체화된다
+                string s = di < cells.Length ? cells[di] : null;
                 if (string.IsNullOrEmpty(s)) continue;
                 double d;
                 if (!double.TryParse(s, NumberStyles.Any, CultureInfo.CurrentCulture, out d))
@@ -1389,8 +1402,10 @@ namespace AdvancedControls.Controls
             int dir = _sortAsc ? 1 : -1;
             _rows.Sort((x, y) =>
             {
-                string sx = di < x.Cells.Length ? (x.Cells[di] ?? "") : "";
-                string sy = di < y.Cells.Length ? (y.Cells[di] ?? "") : "";
+                // 숫자 판정 루프가 중간에 끊겼으면 아직 실체화 안 된 행이 있다 — CellsOf로 안전하게
+                var cx2 = CellsOf(x); var cy2 = CellsOf(y);
+                string sx = di < cx2.Length ? (cx2[di] ?? "") : "";
+                string sy = di < cy2.Length ? (cy2[di] ?? "") : "";
                 int cmp;
                 if (numeric)
                 {
@@ -1448,12 +1463,18 @@ namespace AdvancedControls.Controls
 
         /// <summary>
         /// 셀 인라인 편집을 시작한다. ReadOnly이거나 비데이터(체크박스) 열이면 무시.
-        /// 바인딩 중에도 무시한다 — 셀은 원본의 스냅숏이라 고쳐도 되반영할 곳이 없다(단방향).
+        /// 바인딩 중에는 그 열이 원본 속성에 매핑돼 있고 읽기 전용이 아닐 때만 시작한다
+        /// (커밋 시 원본 항목에 되반영 — 양방향).
         /// </summary>
         public void BeginEdit(int row, int col)
         {
-            if (_readOnly || IsBound || row < 0 || row >= _rows.Count) return;
+            if (_readOnly || row < 0 || row >= _rows.Count) return;
             if (col < 0 || col >= _columns.Count || DataIndex(col) < 0) return;
+            if (IsBound)
+            {
+                var pd = BoundPropOf(col);
+                if (pd == null || pd.IsReadOnly || _rows[row].Item == null) return;
+            }
             CommitEdit();
             EnsureLayout();
             var rect = CellRectClient(row, col);
@@ -1474,7 +1495,8 @@ namespace AdvancedControls.Controls
             ed.SelectAll();
         }
 
-        /// <summary>편집 중이면 편집기 값을 셀에 반영하고 편집을 끝낸다.</summary>
+        /// <summary>편집 중이면 편집기 값을 셀에 반영하고 편집을 끝낸다.
+        /// 바인딩 중이면 원본 항목의 속성에 되반영한다(형식에 안 맞는 입력은 버리고 원값 유지).</summary>
         public void CommitEdit()
         {
             if (_editRow < 0 || _editor == null || !_editor.Visible) return;
@@ -1482,12 +1504,56 @@ namespace AdvancedControls.Controls
             string val = _editor.Text;
             bool changed = GetCell(r, c) != val;
             EndEdit();
-            if (changed)
+            if (!changed) return;
+
+            if (IsBound)
             {
-                SetCell(r, c, val);
-                var h = CellValueChanged;
-                if (h != null) h(this, new AdvGridCellEventArgs(r, c));
+                if (!WriteBackBoundCell(r, c, val)) { Invalidate(); return; }
             }
+            else SetCell(r, c, val);
+
+            var h = CellValueChanged;
+            if (h != null) h(this, new AdvGridCellEventArgs(r, c));
+        }
+
+        /// <summary>열의 원본 속성 기술자. 매핑이 없으면 null.</summary>
+        private PropertyDescriptor BoundPropOf(int col)
+        {
+            int di = DataIndex(col);
+            return (_boundProps != null && di >= 0 && di < _boundProps.Length) ? _boundProps[di] : null;
+        }
+
+        /// <summary>
+        /// 편집 값을 원본 항목 속성에 되반영한다. 변환 실패(형식 불일치)면 false — 원값 유지.
+        /// IBindingList 원본이면 SetValue가 ListChanged 재조회를 일으켜 화면이 맞춰지고,
+        /// 그렇지 않은 원본(List&lt;T&gt; 등)은 스냅숏 셀을 직접 갱신한다.
+        /// </summary>
+        private bool WriteBackBoundCell(int row, int col, string text)
+        {
+            var pd = BoundPropOf(col);
+            var grow = _rows[row];
+            if (pd == null || pd.IsReadOnly || grow.Item == null) return false;
+
+            object converted;
+            try
+            {
+                converted = pd.PropertyType == typeof(string) ? text
+                    : pd.Converter != null && pd.Converter.CanConvertFrom(typeof(string))
+                        ? pd.Converter.ConvertFromString(null, CultureInfo.CurrentCulture, text)
+                        : Convert.ChangeType(text, pd.PropertyType, CultureInfo.CurrentCulture);
+            }
+            catch (Exception) { return false; }   // "abc"→int 같은 입력: 편집을 버린다
+
+            pd.SetValue(grow.Item, converted);
+
+            // 원본이 재조회를 안 일으키는 경우를 위해 스냅숏도 원본에서 다시 읽어 맞춘다(서식 정규화 포함)
+            object canon = pd.GetValue(grow.Item);
+            int di = DataIndex(col);
+            var cells = CellsOf(grow);
+            if (di >= 0 && di < cells.Length)
+                cells[di] = canon == null ? string.Empty : Convert.ToString(canon, CultureInfo.CurrentCulture);
+            Invalidate();
+            return true;
         }
 
         /// <summary>편집 중이면 변경을 버리고 끝낸다.</summary>

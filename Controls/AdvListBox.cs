@@ -20,6 +20,14 @@ namespace AdvancedControls.Controls
         MultiExtended
     }
 
+    /// <summary>드래그 재배치 이벤트 인자. From이 있던 항목이 To 위치로 옮겨졌다.</summary>
+    public class AdvItemsReorderedEventArgs : EventArgs
+    {
+        public int From { get; private set; }
+        public int To { get; private set; }
+        public AdvItemsReorderedEventArgs(int from, int to) { From = from; To = to; }
+    }
+
     /// <summary>
     /// 테마를 따르는 목록 상자. 항목은 직접 그리고, 스크롤은 감싼 패널의
     /// AutoScroll에 맡긴다 — 드롭다운과 같은 방식이라 동작이 일관된다.
@@ -60,6 +68,54 @@ namespace AdvancedControls.Controls
         [Category("Behavior")]
         [Description("항목의 체크 상태가 바뀔 때 발생합니다. CheckBoxes가 켜져 있어야 합니다.")]
         public event EventHandler ItemChecked;
+
+        /// <summary>드래그 재배치로 항목 순서가 바뀐 뒤 발생한다. 선택·체크는 항목을 따라간다.</summary>
+        [Category("Behavior")]
+        [Description("드래그 재배치로 항목 순서가 바뀐 뒤 발생합니다.")]
+        public event EventHandler<AdvItemsReorderedEventArgs> ItemsReordered;
+
+        private bool _allowReorder;
+
+        /// <summary>마우스 드래그로 항목 순서를 바꿀 수 있게 한다. DataSource 바인딩 중에는 동작하지 않는다.</summary>
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(false)]
+        [Description("마우스 드래그로 항목 순서를 바꿀 수 있게 합니다. DataSource 바인딩 중에는 동작하지 않습니다.")]
+        public bool AllowItemReorder
+        {
+            get { return _allowReorder; }
+            set { _allowReorder = value; }
+        }
+
+        /// <summary>지금 드래그 재배치가 실제로 가능한지(켜져 있고 바인딩 아님).</summary>
+        internal bool CanReorderNow
+        {
+            get { return _allowReorder && _boundList == null; }
+        }
+
+        /// <summary>
+        /// from 항목을 to 삽입 위치(제거 전 기준, 0~Count)로 옮긴다. 선택·체크 인덱스는 항목을
+        /// 따라가고, 항목 자체는 그대로이므로 SelectedIndexChanged는 올리지 않는다.
+        /// </summary>
+        internal bool MoveItem(int from, int to)
+        {
+            if (_boundList != null) return false;
+            if (from < 0 || from >= _items.Count) return false;
+            if (to < 0) to = 0;
+            if (to > _items.Count) to = _items.Count;
+            int insert = to > from ? to - 1 : to;
+            if (insert == from) return false;
+
+            var item = _items[from];
+            _items.RemoveAt(from);
+            _items.Insert(insert, item);
+            _core.RemapAfterMove(from, insert);
+            RefreshLayout();
+            _core.Invalidate();
+
+            var h = ItemsReordered;
+            if (h != null) h(this, new AdvItemsReorderedEventArgs(from, insert));
+            return true;
+        }
 
         public AdvListBox()
         {
@@ -564,6 +620,12 @@ namespace AdvancedControls.Controls
             private int _anchor = -1;
             private int _hover = -1;
 
+            // 드래그 재배치 상태
+            private int _dragIndex = -1;     // 눌린 항목(아직 드래그 아닐 수 있음)
+            private bool _dragActive;
+            private Point _dragStart;
+            private int _dropIndex = -1;     // 삽입 위치(0~Count)
+
             public event EventHandler SelectionChanged;
             public event EventHandler CheckChanged;
 
@@ -845,6 +907,14 @@ namespace AdvancedControls.Controls
                       | TextFormatFlags.NoPrefix);
                 }
 
+                // 드래그 재배치 중 삽입 위치 표시선
+                if (_dragActive && _dropIndex >= 0)
+                {
+                    int ly = Math.Min(_dropIndex * ItemHeight, Math.Max(0, Height - 1));
+                    using (var pen = new Pen(theme.Accent, 2f))
+                        g.DrawLine(pen, 0, ly, Width, ly);
+                }
+
                 base.OnPaint(e);
             }
 
@@ -861,9 +931,80 @@ namespace AdvancedControls.Controls
 
             protected override void OnMouseMove(MouseEventArgs e)
             {
+                // 드래그 재배치: 일정 거리 이상 끌면 시작하고, 이후엔 삽입 위치만 추적한다
+                if (_dragIndex >= 0 && (e.Button & MouseButtons.Left) != 0)
+                {
+                    if (!_dragActive)
+                    {
+                        var sz = SystemInformation.DragSize;
+                        if (Math.Abs(e.X - _dragStart.X) > sz.Width / 2
+                         || Math.Abs(e.Y - _dragStart.Y) > sz.Height / 2)
+                        {
+                            _dragActive = true;
+                            Capture = true;
+                        }
+                    }
+                    if (_dragActive)
+                    {
+                        int drop = e.Y < 0 ? 0 : (e.Y + ItemHeight / 2) / ItemHeight;
+                        drop = Math.Max(0, Math.Min(_items.Count, drop));
+                        if (drop != _dropIndex) { _dropIndex = drop; Invalidate(); }
+                        base.OnMouseMove(e);
+                        return;
+                    }
+                }
+
                 int i = IndexFromPoint(e.Location);
                 if (i != _hover) { _hover = i; Invalidate(); }
                 base.OnMouseMove(e);
+            }
+
+            protected override void OnMouseUp(MouseEventArgs e)
+            {
+                if (_dragActive)
+                {
+                    int from = _dragIndex, to = _dropIndex;
+                    CancelDrag();
+                    _owner.MoveItem(from, to);
+                }
+                else _dragIndex = -1;
+                base.OnMouseUp(e);
+            }
+
+            protected override void OnMouseCaptureChanged(EventArgs e)
+            {
+                base.OnMouseCaptureChanged(e);
+                if (_dragActive) CancelDrag();   // 모달·Alt+Tab 등으로 캡처가 풀리면 드래그 취소
+            }
+
+            private void CancelDrag()
+            {
+                _dragActive = false;
+                _dragIndex = -1;
+                _dropIndex = -1;
+                Capture = false;
+                Invalidate();
+            }
+
+            /// <summary>항목 이동(from→to) 뒤 선택·체크·기준 인덱스를 항목을 따라가게 다시 매긴다.</summary>
+            public void RemapAfterMove(int from, int to)
+            {
+                Func<int, int> map = i =>
+                    i == from ? to
+                    : from < to ? (i > from && i <= to ? i - 1 : i)
+                    : (i >= to && i < from ? i + 1 : i);
+
+                var sel = new List<int>(_selected);
+                _selected.Clear();
+                foreach (var s in sel) _selected.Add(map(s));
+
+                var chk = new List<int>(_checked);
+                _checked.Clear();
+                foreach (var c in chk) _checked.Add(map(c));
+
+                if (_primary >= 0) _primary = map(_primary);
+                if (_anchor >= 0) _anchor = map(_anchor);
+                _hover = -1;
             }
 
             protected override void OnMouseLeave(EventArgs e)
@@ -913,6 +1054,13 @@ namespace AdvancedControls.Controls
                 else
                 {
                     SelectSingle(i, true);
+                }
+
+                // 선택 처리 뒤 드래그 재배치를 무장한다(실제 시작은 이동 거리로 판단)
+                if (_owner.CanReorderNow)
+                {
+                    _dragIndex = i;
+                    _dragStart = e.Location;
                 }
 
                 base.OnMouseDown(e);
@@ -1222,6 +1370,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.SelectionMode; }
             set { _owner.SelectionMode = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("마우스 드래그로 항목 순서를 바꿀 수 있게 합니다. DataSource 바인딩 중에는 동작하지 않습니다.")]
+        public bool AllowItemReorder
+        {
+            get { return _owner.AllowItemReorder; }
+            set { _owner.AllowItemReorder = value; }
         }
 
         [DefaultValue(false)]

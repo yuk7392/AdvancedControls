@@ -287,19 +287,45 @@ namespace AdvancedControls.Rendering
             if (isChecked)
             {
                 int ins = Scale(c, 4);
-                var inner = Rectangle.Inflate(box, -ins, -ins);
-                var pts = new[]
-                {
-                    new Point(inner.Left, inner.Top + inner.Height / 2),
-                    new Point(inner.Left + inner.Width * 2 / 5, inner.Bottom),
-                    new Point(inner.Right, inner.Top)
-                };
-                using (var pen = new Pen(enabled ? theme.Accent : theme.TextDisabled, Scale(c, 1.8f))
-                { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
-                    g.DrawLines(pen, pts);
+                DrawCheckMark(g, c, Rectangle.Inflate(box, -ins, -ins), enabled ? theme.Accent : theme.TextDisabled);
             }
 
             g.SmoothingMode = oldSmooth;
+        }
+
+        /// <summary>
+        /// 체크 표시(✓)만 area에 그린다. 상자 없는 체크가 필요한 곳(메뉴 체크 항목)과
+        /// <see cref="DrawItemCheckBox"/>가 같은 도형을 공유한다.
+        /// </summary>
+        public static void DrawCheckMark(Graphics g, Control c, Rectangle area, Color color)
+        {
+            var oldSmooth = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var pts = new[]
+            {
+                new Point(area.Left, area.Top + area.Height / 2),
+                new Point(area.Left + area.Width * 2 / 5, area.Bottom),
+                new Point(area.Right, area.Top)
+            };
+            using (var pen = new Pen(color, Scale(c, 1.8f))
+            { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+                g.DrawLines(pen, pts);
+            g.SmoothingMode = oldSmooth;
+        }
+
+        // 비활성 아이콘용 반투명 매트릭스는 항상 같은 값이라 한 번만 만들어 재사용한다(매 프레임 할당 방지)
+        private static readonly System.Drawing.Imaging.ImageAttributes _disabledImageAttr = CreateDisabledImageAttr();
+        private static System.Drawing.Imaging.ImageAttributes CreateDisabledImageAttr()
+        {
+            var ia = new System.Drawing.Imaging.ImageAttributes();
+            ia.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix { Matrix33 = 0.4f });
+            return ia;
+        }
+
+        /// <summary>비활성 상태의 아이콘을 반투명으로 그린다(툴바·메뉴 공용).</summary>
+        public static void DrawImageDisabled(Graphics g, Image img, Rectangle r)
+        {
+            g.DrawImage(img, r, 0, 0, img.Width, img.Height, GraphicsUnit.Pixel, _disabledImageAttr);
         }
 
         /// <summary>두 색 사이를 t(0~1)로 보간한다. 호버 전환 애니메이션에 쓴다.</summary>

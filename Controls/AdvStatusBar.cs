@@ -70,9 +70,11 @@ namespace AdvancedControls.Controls
         private const int Gap = 6;
         private const int ProgW = 110;
         private const int ProgH = 8;
+        private const int GripSize = 16;   // 리사이즈 그립 히트 영역(논리 px)
 
         private readonly List<AdvStatusPanel> _panels = new List<AdvStatusPanel>();
         private AdvStatusBarOptions _options;
+        private bool _sizingGrip = true;
 
         /// <summary>칸을 클릭하면 발생한다. 어느 칸인지는 인자의 Panel로 알 수 있다.</summary>
         [Category("Action")]
@@ -97,6 +99,50 @@ namespace AdvancedControls.Controls
 
         [Browsable(false)]
         public IList<AdvStatusPanel> Panels { get { return _panels; } }
+
+        /// <summary>우하단에 폼 리사이즈 그립을 표시한다. 크기 조절 가능한 폼에서 일반 상태일 때만 그려진다.</summary>
+        [Browsable(false)]
+        public bool SizingGrip
+        {
+            get { return _sizingGrip; }
+            set
+            {
+                if (_sizingGrip == value) return;
+                _sizingGrip = value;
+                Invalidate();
+            }
+        }
+
+        // ── 리사이즈 그립 ─────────────────────────────────────────────
+
+        /// <summary>그립을 그리고 동작시킬 조건: 켜져 있고, 크기 조절 가능한 폼 위이고, 최대화가 아닐 때.</summary>
+        private bool GripVisible
+        {
+            get
+            {
+                if (!_sizingGrip) return false;
+                var f = FindForm();
+                if (f == null || f.WindowState == FormWindowState.Maximized) return false;
+                return f.FormBorderStyle == FormBorderStyle.Sizable
+                    || f.FormBorderStyle == FormBorderStyle.SizableToolWindow;
+            }
+        }
+
+        private Rectangle GripRect
+        {
+            get
+            {
+                int s = AdvGraphics.Scale(this, GripSize);
+                return new Rectangle(Width - s, Height - s, s, s);
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        private const int WM_NCLBUTTONDOWN = 0xA1;
+        private const int HTBOTTOMRIGHT = 17;
 
         private AdvStatusPanel Add(AdvStatusPanel p) { p.Owner = this; _panels.Add(p); Invalidate(); return p; }
 
@@ -138,7 +184,9 @@ namespace AdvancedControls.Controls
                 fixedTotal += p.Width >= 0 ? p.Width : AutoWidth(p);
             }
 
-            int leftover = Math.Max(0, Width - fixedTotal);
+            // 그립이 보이면 스프링이 그 밑까지 깔리지 않게 폭을 예약한다
+            int gripW = GripVisible ? AdvGraphics.Scale(this, GripSize) : 0;
+            int leftover = Math.Max(0, Width - gripW - fixedTotal);
             int springW = springs > 0 ? leftover / springs : 0;
             int springSeen = 0;
             int barH = Math.Max(1, Height - 1);
@@ -160,9 +208,28 @@ namespace AdvancedControls.Controls
 
         // ── 마우스 ────────────────────────────────────────────────────
 
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            Cursor = GripVisible && GripRect.Contains(e.Location) ? Cursors.SizeNWSE : Cursors.Default;
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
+
+            // 그립 드래그 → 네이티브 리사이즈 루프로 넘긴다(폼 우하단 모서리 잡은 것과 동일)
+            if (e.Button == MouseButtons.Left && GripVisible && GripRect.Contains(e.Location))
+            {
+                var f = FindForm();
+                if (f != null && f.IsHandleCreated)
+                {
+                    ReleaseCapture();
+                    SendMessage(f.Handle, WM_NCLBUTTONDOWN, (IntPtr)HTBOTTOMRIGHT, IntPtr.Zero);
+                }
+                return;   // 그립 클릭은 PanelClick을 발생시키지 않는다
+            }
+
             var h = PanelClick;
             if (h == null) return;
             foreach (var p in _panels)
@@ -195,6 +262,21 @@ namespace AdvancedControls.Controls
                     else DrawTextPanel(g, theme, p);
                 }
             }
+
+            if (GripVisible) DrawGrip(g, theme);
+        }
+
+        /// <summary>우하단 대각선 점 그립(아래 3, 가운데 2, 위 1 — 빗변이 ↗ 방향).</summary>
+        private void DrawGrip(Graphics g, AdvTheme theme)
+        {
+            int dot = Math.Max(2, AdvGraphics.Scale(this, 2));
+            int step = AdvGraphics.Scale(this, 4);
+            int bx = Width - AdvGraphics.Scale(this, 4);    // 점들의 우측 기준선
+            int by = Height - AdvGraphics.Scale(this, 3);   // 점들의 하단 기준선
+            using (var b = new SolidBrush(theme.TextMuted))
+                for (int i = 0; i < 3; i++)
+                    for (int j = 0; j <= i; j++)
+                        g.FillRectangle(b, bx - (i - j) * step - dot, by - j * step - dot, dot, dot);
         }
 
         private void DrawTextPanel(Graphics g, AdvTheme theme, AdvStatusPanel p)
@@ -323,6 +405,19 @@ namespace AdvancedControls.Controls
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class AdvStatusBarOptions : AdvOptions
     {
-        internal AdvStatusBarOptions(AdvStatusBar owner) : base(owner.Styling, owner.Palette) { }
+        private readonly AdvStatusBar _owner;
+
+        internal AdvStatusBarOptions(AdvStatusBar owner) : base(owner.Styling, owner.Palette)
+        {
+            _owner = owner;
+        }
+
+        [DefaultValue(true)]
+        [Description("우하단에 폼 리사이즈 그립을 표시합니다. 크기 조절 가능한 폼에서 일반(비최대화) 상태일 때만 그려집니다.")]
+        public bool SizingGrip
+        {
+            get { return _owner.SizingGrip; }
+            set { _owner.SizingGrip = value; }
+        }
     }
 }

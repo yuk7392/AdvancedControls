@@ -138,12 +138,45 @@ namespace AdvancedControls.Controls
         {
             private const int WS_EX_TOOLWINDOW = 0x00000080;
             private const int WS_EX_NOACTIVATE = 0x08000000;
+            private const int WS_EX_LAYERED = 0x00080000;
+
+            // ── UpdateLayeredWindow 인터롭(픽셀 단위 알파 — Region 하드엣지 코너의 대체) ──
+            private const int ULW_ALPHA = 2;
+            private const byte AC_SRC_OVER = 0;
+            private const byte AC_SRC_ALPHA = 1;
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct POINT { public int x, y; }
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct SIZE { public int cx, cy; }
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst,
+                ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern IntPtr GetDC(IntPtr hWnd);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+            [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+            private static extern IntPtr CreateCompatibleDC(IntPtr hDC);
+            [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+            private static extern bool DeleteDC(IntPtr hdc);
+            [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+            private static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
+            [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+            private static extern bool DeleteObject(IntPtr hObject);
 
             private readonly AdvAlert _alert;
             private readonly Timer _life;
             private readonly AdvAnimator _fade;
             private readonly int _durationMs;
             private bool _dismissing;
+
+            private Bitmap _surface;    // 마지막으로 합성한 얼굴(내용이 바뀔 때만 다시 만든다)
+            private byte _alpha;        // 페이드 알파(ULW SourceConstantAlpha)
+            private bool _rendering;    // DrawToBitmap(WM_PRINTCLIENT)이 Paint를 되울려도 재진입하지 않게
 
             internal readonly Rectangle WorkArea;
             internal bool IsDismissing { get { return _dismissing; } }
@@ -156,7 +189,7 @@ namespace AdvancedControls.Controls
                 get
                 {
                     var cp = base.CreateParams;
-                    cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                    cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
                     return cp;
                 }
             }
@@ -184,12 +217,12 @@ namespace AdvancedControls.Controls
                 };
                 _alert.Styling.Radius = ToastRadius;
                 _alert.Dismissed += AlertDismissed;
+                _alert.Paint += AlertPainted;   // 호버(X 진해짐) 등 얼굴 변화 시 표면 재합성
                 Controls.Add(_alert);
 
                 Size = new Size(ToastWidth, MeasureHeight(message, _alert.Font));
-                UpdateRegion();
 
-                Opacity = 0;
+                _alpha = 0;   // 페이드 인 전 완전 투명(ULW 알파)
                 _fade = new AdvAnimator(FadeMs);
                 _fade.ValueChanged += FadeTick;
 
@@ -223,17 +256,73 @@ namespace AdvancedControls.Controls
                 }
             }
 
-            private Rectangle _regionClip = Rectangle.Empty;
-
-            private void UpdateRegion()
+            /// <summary>
+            /// 얼굴(AdvAlert)을 비트맵으로 떠서 둥근 경로로 AA 클립해 32bpp 표면을 만든다.
+            /// Region 하드엣지와 달리 코너가 배경과 부드럽게 섞인다. 완전 투명 픽셀은 클릭도 통과한다.
+            /// </summary>
+            private void RenderSurface()
             {
-                AdvGraphics.UpdateRoundedRegion(this, ClientRectangle, new AdvCorners(ToastRadius),
-                                                false, ref _regionClip);
+                if (!IsHandleCreated || Width <= 0 || Height <= 0) return;
+                _rendering = true;
+                try
+                {
+                    using (var face = new Bitmap(Width, Height))
+                    {
+                        _alert.DrawToBitmap(face, new Rectangle(0, 0, Width, Height));
+
+                        if (_surface != null) _surface.Dispose();
+                        _surface = new Bitmap(Width, Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                        using (var g = Graphics.FromImage(_surface))
+                        {
+                            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                            using (var path = AdvGraphics.CreateRoundedRect(
+                                       new Rectangle(0, 0, Width, Height), new AdvCorners(ToastRadius)))
+                            using (var tb = new TextureBrush(face))
+                                g.FillPath(tb, path);
+                        }
+                    }
+                    PushSurface();
+                }
+                finally { _rendering = false; }
+            }
+
+            /// <summary>합성해 둔 표면을 현재 알파로 창에 반영한다(페이드는 표면 재합성 없이 이것만 반복).</summary>
+            private void PushSurface()
+            {
+                if (_surface == null || !IsHandleCreated || IsDisposed) return;
+
+                IntPtr screenDc = GetDC(IntPtr.Zero);
+                IntPtr memDc = CreateCompatibleDC(screenDc);
+                IntPtr hBmp = IntPtr.Zero, old = IntPtr.Zero;
+                try
+                {
+                    hBmp = _surface.GetHbitmap(Color.FromArgb(0));
+                    old = SelectObject(memDc, hBmp);
+                    var size = new SIZE { cx = Width, cy = Height };
+                    var src = new POINT();
+                    var dst = new POINT { x = Left, y = Top };
+                    var blend = new BLENDFUNCTION
+                    { BlendOp = AC_SRC_OVER, SourceConstantAlpha = _alpha, AlphaFormat = AC_SRC_ALPHA };
+                    UpdateLayeredWindow(Handle, screenDc, ref dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+                }
+                finally
+                {
+                    if (old != IntPtr.Zero) SelectObject(memDc, old);
+                    if (hBmp != IntPtr.Zero) DeleteObject(hBmp);
+                    DeleteDC(memDc);
+                    ReleaseDC(IntPtr.Zero, screenDc);
+                }
+            }
+
+            private void AlertPainted(object sender, PaintEventArgs e)
+            {
+                if (!_rendering && Visible) RenderSurface();
             }
 
             protected override void OnShown(EventArgs e)
             {
                 base.OnShown(e);
+                RenderSurface();
                 _fade.AnimateTo(1f);
                 if (_durationMs > 0) _life.Start();
                 // 새 알림이 떴음을 스크린리더에 알린다
@@ -246,8 +335,9 @@ namespace AdvancedControls.Controls
             private void FadeTick(object sender, EventArgs e)
             {
                 if (IsDisposed) return;
-                double v = _fade.Eased;
-                Opacity = v < 0 ? 0 : (v > 1 ? 1 : v);
+                float v = _fade.Eased;
+                _alpha = (byte)(255 * (v < 0f ? 0f : (v > 1f ? 1f : v)));
+                PushSurface();
                 if (_dismissing && _fade.Eased <= 0.001f) Close();
             }
 
@@ -278,13 +368,14 @@ namespace AdvancedControls.Controls
                 if (disposing)
                 {
                     _alert.Dismissed -= AlertDismissed;
+                    _alert.Paint -= AlertPainted;
                     _alert.MouseEnter -= HoverPause;
                     _alert.MouseLeave -= HoverResume;
                     _fade.ValueChanged -= FadeTick;
                     _fade.Dispose();
                     _life.Tick -= LifeExpired;
                     _life.Dispose();
-                    if (Region != null) Region.Dispose();
+                    if (_surface != null) { _surface.Dispose(); _surface = null; }
                 }
                 base.Dispose(disposing);
             }

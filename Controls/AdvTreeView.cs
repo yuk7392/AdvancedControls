@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
+using AdvancedControls.Controls.Internal;
 using AdvancedControls.Rendering;
 using AdvancedControls.Theming;
 
@@ -83,6 +85,7 @@ namespace AdvancedControls.Controls
         /// <summary>자식 노드를 추가하고 돌려준다.</summary>
         public AdvTreeNode Add(string text)
         {
+            if (Owner != null) Owner.ThrowIfBound();
             var n = new AdvTreeNode(text) { Parent = this, Owner = Owner };
             ChildNodes.Add(n);
             if (Owner != null) Owner.NotifyStructureChanged();
@@ -184,6 +187,7 @@ namespace AdvancedControls.Controls
         /// <summary>최상위 노드를 추가하고 돌려준다.</summary>
         public AdvTreeNode Add(string text)
         {
+            ThrowIfBound();
             var n = new AdvTreeNode(text) { Owner = this };
             _roots.Add(n);
             NotifyStructureChanged();
@@ -196,6 +200,7 @@ namespace AdvancedControls.Controls
         /// </summary>
         public bool Remove(AdvTreeNode node)
         {
+            ThrowIfBound();
             if (node == null || !ReferenceEquals(node.Owner, this)) return false;
 
             var list = node.Parent != null ? node.Parent.ChildNodes : _roots;
@@ -228,10 +233,144 @@ namespace AdvancedControls.Controls
         /// <summary>모든 노드를 지운다.</summary>
         public void Clear()
         {
+            ThrowIfBound();
+            ClearCore();
+            NotifyStructureChanged();
+        }
+
+        private void ClearCore()
+        {
             _roots.Clear();
             _selected = _hover = null;
             _scrollY = 0;
+        }
+
+        // ── 데이터 바인딩 ─────────────────────────────────────────────
+
+        private object _dataSource;
+        private IList _boundList;
+        private string _displayMember = "";
+        private string _childrenMember = "";
+
+        /// <summary>
+        /// 트리를 채울 데이터 원본(IList/IListSource). 지정하면 노드를 직접 바꿀 수 없다.
+        /// 계층은 <see cref="ChildrenMember"/>가 가리키는 속성으로 재귀 구성하고,
+        /// 각 노드의 Tag에 원본 항목이 들어간다. IBindingList면 변경 시 전체를 다시 읽는다
+        /// (재조회 시 펼침 상태는 초기화된다).
+        /// </summary>
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(null)]
+        [RefreshProperties(RefreshProperties.Repaint)]
+        [AttributeProvider(typeof(IListSource))]
+        [Description("트리를 채울 데이터 원본입니다. DataTable, BindingSource, IList를 받습니다.")]
+        public object DataSource
+        {
+            get { return _dataSource; }
+            set
+            {
+                if (ReferenceEquals(_dataSource, value)) return;
+                SetDataSource(value);
+            }
+        }
+
+        [Browsable(false)]
+        [DefaultValue("")]
+        [Description("노드 텍스트로 쓸 속성 이름입니다. 비우면 ToString()을 씁니다.")]
+        public string DisplayMember
+        {
+            get { return _displayMember; }
+            set
+            {
+                value = value ?? "";
+                if (_displayMember == value) return;
+                _displayMember = value;
+                if (_boundList != null) RebuildFromSource();
+            }
+        }
+
+        [Browsable(false)]
+        [DefaultValue("")]
+        [Description("자식 목록(IEnumerable)을 돌려주는 속성 이름입니다. 비우면 평면 목록으로 채웁니다.")]
+        public string ChildrenMember
+        {
+            get { return _childrenMember; }
+            set
+            {
+                value = value ?? "";
+                if (_childrenMember == value) return;
+                _childrenMember = value;
+                if (_boundList != null) RebuildFromSource();
+            }
+        }
+
+        private void SetDataSource(object value)
+        {
+            DetachBoundList();
+
+            _dataSource = value;
+            _boundList = AdvDataBinding.ResolveList(value);
+
+            var bindingList = _boundList as IBindingList;
+            if (bindingList != null) bindingList.ListChanged += BoundListChanged;
+
+            RebuildFromSource();
+        }
+
+        private void DetachBoundList()
+        {
+            var bindingList = _boundList as IBindingList;
+            if (bindingList != null) bindingList.ListChanged -= BoundListChanged;
+            _boundList = null;
+        }
+
+        private void BoundListChanged(object sender, ListChangedEventArgs e) { RebuildFromSource(); }
+
+        /// <summary>바인딩 중 노드 직접 수정을 막는다 — 다음 재조회에서 조용히 사라지기 때문이다.</summary>
+        internal void ThrowIfBound()
+        {
+            if (_boundList != null)
+                throw new InvalidOperationException(
+                    "DataSource가 지정된 동안에는 노드를 직접 바꿀 수 없습니다. 원본 목록을 수정하세요.");
+        }
+
+        private void RebuildFromSource()
+        {
+            ClearCore();
+            if (_boundList != null)
+                foreach (var item in _boundList)
+                    AddBoundNode(null, item, 0);
             NotifyStructureChanged();
+        }
+
+        private void AddBoundNode(AdvTreeNode parent, object item, int depth)
+        {
+            if (depth > 100)
+                throw new InvalidOperationException("ChildrenMember 계층이 100단계를 넘습니다(순환 참조 의심).");
+
+            // 공개 Add는 바인딩 가드에 걸리므로 내부에서 직접 잇는다. 통지는 Rebuild가 끝에 한 번만.
+            var n = new AdvTreeNode(DisplayTextOf(item)) { Owner = this, Parent = parent, Tag = item };
+            (parent != null ? parent.ChildNodes : _roots).Add(n);
+
+            if (string.IsNullOrEmpty(_childrenMember)) return;
+            var kids = GetMemberValue(item, _childrenMember) as IEnumerable;
+            if (kids == null) return;
+            foreach (var k in kids) AddBoundNode(n, k, depth + 1);
+        }
+
+        private string DisplayTextOf(object item)
+        {
+            if (item == null) return string.Empty;
+            if (string.IsNullOrEmpty(_displayMember)) return item.ToString();
+            var v = GetMemberValue(item, _displayMember);
+            return v != null ? v.ToString() : string.Empty;
+        }
+
+        /// <summary>TypeDescriptor 경유라 POCO 속성과 DataRowView 컬럼을 같은 방식으로 읽는다.</summary>
+        private static object GetMemberValue(object item, string member)
+        {
+            if (item == null || string.IsNullOrEmpty(member)) return null;
+            var pd = TypeDescriptor.GetProperties(item)[member];
+            return pd != null ? pd.GetValue(item) : null;
         }
 
         [Browsable(false)]
@@ -863,7 +1002,11 @@ namespace AdvancedControls.Controls
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && Region != null) Region.Dispose();
+            if (disposing)
+            {
+                DetachBoundList();   // IBindingList 구독을 남기면 원본이 트리를 붙잡아 수거되지 않는다
+                if (Region != null) Region.Dispose();
+            }
             base.Dispose(disposing);
         }
     }
@@ -893,6 +1036,32 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.CheckBoxes; }
             set { _owner.CheckBoxes = value; }
+        }
+
+        [DefaultValue(null)]
+        [RefreshProperties(RefreshProperties.Repaint)]
+        [AttributeProvider(typeof(IListSource))]
+        [Description("트리를 채울 데이터 원본입니다. DataTable, BindingSource, IList를 받습니다.")]
+        public object DataSource
+        {
+            get { return _owner.DataSource; }
+            set { _owner.DataSource = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("노드 텍스트로 쓸 속성 이름입니다. 비우면 ToString()을 씁니다.")]
+        public string DisplayMember
+        {
+            get { return _owner.DisplayMember; }
+            set { _owner.DisplayMember = value; }
+        }
+
+        [DefaultValue("")]
+        [Description("자식 목록(IEnumerable)을 돌려주는 속성 이름입니다. 비우면 평면 목록으로 채웁니다.")]
+        public string ChildrenMember
+        {
+            get { return _owner.ChildrenMember; }
+            set { _owner.ChildrenMember = value; }
         }
     }
 }

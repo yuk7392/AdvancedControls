@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using AdvancedControls.Controls.Internal;
 using AdvancedControls.Rendering;
 using AdvancedControls.Theming;
 
@@ -29,9 +30,14 @@ namespace AdvancedControls.Controls
         {
             private const int WM_PAINT = 0x000F;
             private const int WM_PRINTCLIENT = 0x0318;
+            private const int WM_VSCROLL = 0x0115;
+            private const int WM_MOUSEWHEEL = 0x020A;
 
             public string Placeholder = string.Empty;
             public Color PlaceholderColor = SystemColors.GrayText;
+
+            /// <summary>스크롤 위치가 바뀌었을 수 있는 메시지 뒤에 알린다(테마 스크롤바 동기화용).</summary>
+            public event EventHandler ScrollPulse;
 
             /// <summary>
             /// 화면 출력은 WM_PAINT로, DrawToBitmap·인쇄는 WM_PRINTCLIENT로 들어온다.
@@ -40,6 +46,13 @@ namespace AdvancedControls.Controls
             protected override void WndProc(ref Message m)
             {
                 base.WndProc(ref m);
+
+                if (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL)
+                {
+                    var sp = ScrollPulse;
+                    if (sp != null) sp(this, EventArgs.Empty);
+                    return;
+                }
 
                 if (m.Msg != WM_PAINT && m.Msg != WM_PRINTCLIENT) return;
                 if (Placeholder.Length == 0 || TextLength > 0) return;
@@ -103,6 +116,17 @@ namespace AdvancedControls.Controls
 
         private readonly PlaceholderTextBox _inner;
         private string _placeholder = string.Empty;
+
+        // 테마 세로 스크롤바(멀티라인 + ScrollBars.Vertical일 때 OS 스크롤바 대신)
+        private ScrollBars _scrollBars = ScrollBars.None;
+        private AdvScrollBar _vbar;
+        private bool _syncingVBar;
+
+        private const int EM_LINESCROLL = 0xB6;
+        private const int EM_GETLINECOUNT = 0xBA;
+        private const int EM_GETFIRSTVISIBLELINE = 0xCE;
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
         // 입력 강화: 아이콘·접두/접미 애드온·지우기 버튼·검증 상태
         private const int AddonGap = 6;
@@ -223,6 +247,7 @@ namespace AdvancedControls.Controls
             {
                 if (_inner.Multiline == value) return;
                 _inner.Multiline = value;
+                ApplyScrollBars();   // Vertical 테마 막대의 활성 조건이 바뀐다
                 LayoutInner();
                 AdjustHeight();
             }
@@ -264,14 +289,79 @@ namespace AdvancedControls.Controls
             set { _inner.TextAlign = value; }
         }
 
+        /// <summary>
+        /// 여러 줄일 때의 스크롤 막대. Vertical이면 OS 스크롤바 대신 테마 스크롤바를 그린다
+        /// (다크 테마에서 흰 띠로 남는 문제 해소). Horizontal·Both는 OS 스크롤바 그대로다.
+        /// </summary>
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(ScrollBars.None)]
-        [Description("여러 줄일 때 표시할 스크롤 막대입니다. Multiline이 꺼져 있으면 무시됩니다.")]
+        [Description("여러 줄일 때 표시할 스크롤 막대입니다. Vertical은 테마 스크롤바로 그려집니다. Multiline이 꺼져 있으면 무시됩니다.")]
         public ScrollBars ScrollBars
         {
-            get { return _inner.ScrollBars; }
-            set { _inner.ScrollBars = value; }
+            get { return _scrollBars; }
+            set
+            {
+                if (_scrollBars == value) return;
+                _scrollBars = value;
+                ApplyScrollBars();
+            }
         }
+
+        /// <summary>테마 세로 스크롤바를 쓸 조건인지.</summary>
+        private bool ThemedVBarActive
+        {
+            get { return _inner.Multiline && _scrollBars == ScrollBars.Vertical; }
+        }
+
+        private void ApplyScrollBars()
+        {
+            // 테마 막대가 맡을 때는 OS 막대를 끈다. 나머지 조합은 그대로 넘긴다.
+            _inner.ScrollBars = ThemedVBarActive ? ScrollBars.None : _scrollBars;
+
+            if (ThemedVBarActive && _vbar == null)
+            {
+                _vbar = new AdvScrollBar(EffectiveTheme) { Width = AdvScrollBar.DefaultWidth };
+                _vbar.ValueChanged += VBarValueChanged;
+                _inner.ScrollPulse += InnerScrollPulse;
+                Controls.Add(_vbar);
+                _vbar.BringToFront();
+            }
+            if (_vbar != null) _vbar.Visible = ThemedVBarActive;
+
+            LayoutInner();
+            SyncVBar();
+            Invalidate();
+        }
+
+        /// <summary>안쪽 편집창의 스크롤 상태를 테마 막대에 반영한다(줄 수·첫 표시 줄 기준).</summary>
+        private void SyncVBar()
+        {
+            if (!ThemedVBarActive || _vbar == null || !_inner.IsHandleCreated) return;
+
+            int lineH = Math.Max(1, _inner.Font.Height);
+            int lines = (int)(long)SendMessage(_inner.Handle, EM_GETLINECOUNT, IntPtr.Zero, IntPtr.Zero);
+            int first = (int)(long)SendMessage(_inner.Handle, EM_GETFIRSTVISIBLELINE, IntPtr.Zero, IntPtr.Zero);
+
+            _vbar.Theme = EffectiveTheme;
+            _vbar.ContentHeight = lines * lineH;
+            _vbar.ViewportHeight = _inner.ClientSize.Height;
+            _syncingVBar = true;
+            try { _vbar.Value = first * lineH; }
+            finally { _syncingVBar = false; }
+        }
+
+        private void VBarValueChanged(object sender, EventArgs e)
+        {
+            if (_syncingVBar || !ThemedVBarActive || !_inner.IsHandleCreated) return;
+
+            int lineH = Math.Max(1, _inner.Font.Height);
+            int target = _vbar.Value / lineH;
+            int first = (int)(long)SendMessage(_inner.Handle, EM_GETFIRSTVISIBLELINE, IntPtr.Zero, IntPtr.Zero);
+            if (target != first)
+                SendMessage(_inner.Handle, EM_LINESCROLL, IntPtr.Zero, (IntPtr)(target - first));
+        }
+
+        private void InnerScrollPulse(object sender, EventArgs e) { SyncVBar(); }
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -441,6 +531,15 @@ namespace AdvancedControls.Controls
             }
 
             var area = new Rectangle(left, content.Top, Math.Max(1, right - left), content.Height);
+
+            // 테마 세로 스크롤바 자리(오른쪽 끝)
+            if (ThemedVBarActive && _vbar != null)
+            {
+                int bw = AdvGraphics.Scale(this, AdvScrollBar.DefaultWidth);
+                _vbar.Bounds = new Rectangle(area.Right - bw, area.Top, bw, area.Height);
+                area = new Rectangle(area.X, area.Y, Math.Max(1, area.Width - bw - 2), area.Height);
+            }
+
             if (!_inner.Multiline)
             {
                 int h = _inner.PreferredHeight;
@@ -543,11 +642,11 @@ namespace AdvancedControls.Controls
 
         #region 내부 TextBox 이벤트 중계
 
-        private void InnerHandleCreated(object sender, EventArgs e) { ApplyPlaceholder(); }
-        private void InnerTextChanged(object sender, EventArgs e) { OnTextChanged(EventArgs.Empty); }
+        private void InnerHandleCreated(object sender, EventArgs e) { ApplyPlaceholder(); SyncVBar(); }
+        private void InnerTextChanged(object sender, EventArgs e) { OnTextChanged(EventArgs.Empty); SyncVBar(); }
         private void InnerKeyDown(object sender, KeyEventArgs e) { OnKeyDown(e); }
         private void InnerKeyPress(object sender, KeyPressEventArgs e) { OnKeyPress(e); }
-        private void InnerKeyUp(object sender, KeyEventArgs e) { OnKeyUp(e); }
+        private void InnerKeyUp(object sender, KeyEventArgs e) { OnKeyUp(e); SyncVBar(); }   // 캐럿 이동 스크롤 반영
 
         private void InnerFocusChanged(object sender, EventArgs e)
         {
@@ -640,6 +739,7 @@ namespace AdvancedControls.Controls
         protected override void OnResize(EventArgs e)
         {
             LayoutInner();
+            SyncVBar();   // 보이는 높이가 바뀌면 썸 크기도 달라진다
             base.OnResize(e);
         }
 
@@ -748,6 +848,8 @@ namespace AdvancedControls.Controls
                 _inner.KeyDown -= InnerKeyDown;
                 _inner.KeyPress -= InnerKeyPress;
                 _inner.KeyUp -= InnerKeyUp;
+                _inner.ScrollPulse -= InnerScrollPulse;
+                if (_vbar != null) _vbar.ValueChanged -= VBarValueChanged;
             }
             base.Dispose(disposing);
         }

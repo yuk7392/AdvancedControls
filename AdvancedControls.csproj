@@ -135,6 +135,7 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Controls\Design\AdvSplitContainerDesigner.cs" />
+    <Compile Include="Controls\Design\AdvWizardDesigner.cs" />
     <Compile Include="Controls\AdvDialog.cs">
       <SubType>Form</SubType>
     </Compile>

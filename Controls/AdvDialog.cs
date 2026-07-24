@@ -62,16 +62,68 @@ namespace AdvancedControls.Controls
             BuildLayout(buttons);
         }
 
-        /// <summary>테마 모달을 띄우고 결과를 돌려준다.</summary>
+        /// <summary>
+        /// 백드롭 딤 불투명도(0~1). 소유자 폼이 있을 때 그 위를 이만큼 어둡게 깔고 모달을 띄운다.
+        /// 0 이하면 딤을 그리지 않는다.
+        /// </summary>
+        public static double BackdropOpacity = 0.35;
+
+        /// <summary>테마 모달을 띄우고 결과를 돌려준다. 소유자 폼이 있으면 그 위를 딤 처리한다.</summary>
         public static DialogResult Show(string message, string caption = "",
             AdvDialogButtons buttons = AdvDialogButtons.OK, AdvDialogIcon icon = AdvDialogIcon.None,
             IWin32Window owner = null)
         {
             using (var d = new AdvDialog(message, caption, buttons, icon))
             {
-                if (owner == null) d.StartPosition = FormStartPosition.CenterScreen;
-                return owner != null ? d.ShowDialog(owner) : d.ShowDialog();
+                var ownerForm = ResolveOwnerForm(owner);
+                if (ownerForm == null)
+                {
+                    d.StartPosition = FormStartPosition.CenterScreen;
+                    return owner != null ? d.ShowDialog(owner) : d.ShowDialog();
+                }
+
+                var dim = CreateBackdrop(ownerForm);
+                if (dim == null) return d.ShowDialog(ownerForm);
+
+                using (dim)
+                {
+                    dim.Show(ownerForm);   // 모달 진입과 함께 비활성화되므로 클릭은 흡수만 된다
+                    // 다이얼로그는 딤을 소유자로 띄워 소유 사슬(폼→딤→다이얼로그)로 z-순서를 보장한다.
+                    // CenterParent 기준도 딤(=폼 전체 영역)이라 가운데 위치는 같다.
+                    try { return d.ShowDialog(dim); }
+                    finally { dim.Hide(); }
+                }
             }
+        }
+
+        /// <summary>IWin32Window에서 실제 폼을 찾는다. 폼이 아니면(핸들만 온 경우 등) null.</summary>
+        private static Form ResolveOwnerForm(IWin32Window owner)
+        {
+            if (owner == null) return null;
+            var f = owner as Form;
+            if (f != null) return f;
+            var c = Control.FromHandle(owner.Handle);
+            return c != null ? c.FindForm() : null;
+        }
+
+        /// <summary>소유자 폼 전체를 덮는 반투명 딤 창을 만든다. 딤이 꺼져 있으면 null.</summary>
+        internal static Form CreateBackdrop(Form owner)
+        {
+            double op = BackdropOpacity;
+            if (op <= 0 || owner == null || !owner.Visible
+                || owner.WindowState == FormWindowState.Minimized) return null;
+            if (op > 1) op = 1;
+
+            return new Form
+            {
+                FormBorderStyle = FormBorderStyle.None,
+                ShowInTaskbar = false,
+                StartPosition = FormStartPosition.Manual,
+                Bounds = owner.Bounds,   // 제목줄 포함 폼 전체(스크린 좌표)
+                BackColor = Color.Black,
+                Opacity = op,
+                TopMost = owner.TopMost   // 최상위 폼 위에도 딤이 깔리도록 z-계층을 맞춘다
+            };
         }
 
         /// <summary>확인/취소 편의 메서드. 확인이면 true.</summary>

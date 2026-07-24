@@ -39,6 +39,22 @@ namespace AdvancedControls.Controls.Internal
         /// </summary>
         public Converter<object, string> TextProvider { get; set; }
 
+        /// <summary>
+        /// 항목 텍스트에서 강조할 검색어(자동완성의 현재 입력). 대소문자 무시로 첫 일치 구간을
+        /// 굵게 + 강조색으로 그린다. 비우면 일반 렌더(콤보 드롭다운 경로).
+        /// </summary>
+        public string HighlightText { get; set; }
+
+        // 강조 구간용 볼드 폰트는 Font가 바뀔 때만 다시 만든다(매 그리기 생성 방지)
+        private Font _boldFont;
+        private Font BoldFont { get { return _boldFont ?? (_boldFont = new Font(Font, FontStyle.Bold)); } }
+
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            if (_boldFont != null) { _boldFont.Dispose(); _boldFont = null; }
+        }
+
         public AdvTheme Theme
         {
             get { return _theme; }
@@ -102,14 +118,46 @@ namespace AdvancedControls.Controls.Internal
                 }
 
                 var textRect = new Rectangle(r.X + 8, r.Y, r.Width - 16, r.Height);
-                TextRenderer.DrawText(g, ItemText(i), Font, textRect, fore,
-                    TextFormatFlags.Left
-                  | TextFormatFlags.VerticalCenter
-                  | TextFormatFlags.EndEllipsis
-                  | TextFormatFlags.NoPrefix);
+                string text = ItemText(i);
+
+                int hs = string.IsNullOrEmpty(HighlightText) ? -1
+                    : text.IndexOf(HighlightText, StringComparison.CurrentCultureIgnoreCase);
+                if (hs >= 0)
+                {
+                    DrawHighlighted(g, text, hs, HighlightText.Length, textRect, fore, i == _selectedIndex);
+                }
+                else
+                {
+                    TextRenderer.DrawText(g, text, Font, textRect, fore,
+                        TextFormatFlags.Left
+                      | TextFormatFlags.VerticalCenter
+                      | TextFormatFlags.EndEllipsis
+                      | TextFormatFlags.NoPrefix);
+                }
             }
 
             base.OnPaint(e);
+        }
+
+        /// <summary>일치 구간을 굵게 + 강조색으로 세 조각(앞/일치/뒤)으로 나눠 그린다.
+        /// 조각 그리기라 말줄임은 없고 넘치는 부분은 잘린다(제안 목록 폭이 입력창과 같아 실사용 무해).</summary>
+        private void DrawHighlighted(Graphics g, string text, int start, int len, Rectangle rect, Color fore, bool selected)
+        {
+            const TextFormatFlags F = TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding
+                                    | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine;
+            var proposed = new Size(int.MaxValue, rect.Height);
+            Color midColor = selected ? _theme.OnAccent : _theme.Accent;
+
+            int x = rect.X;
+            string[] parts = { text.Substring(0, start), text.Substring(start, len), text.Substring(start + len) };
+            for (int p = 0; p < 3 && x < rect.Right; p++)
+            {
+                if (parts[p].Length == 0) continue;
+                var font = p == 1 ? BoldFont : Font;
+                var color = p == 1 ? midColor : fore;
+                TextRenderer.DrawText(g, parts[p], font, new Rectangle(x, rect.Y, rect.Right - x, rect.Height), color, F);
+                x += TextRenderer.MeasureText(g, parts[p], font, proposed, F).Width;
+            }
         }
 
         private string ItemText(int index)
@@ -157,6 +205,12 @@ namespace AdvancedControls.Controls.Internal
                 if (handler != null) handler(this, new ItemEventArgs(i));
             }
             base.OnMouseUp(e);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _boldFont != null) { _boldFont.Dispose(); _boldFont = null; }
+            base.Dispose(disposing);
         }
 
         internal class ItemEventArgs : EventArgs

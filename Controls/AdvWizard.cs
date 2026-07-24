@@ -28,6 +28,7 @@ namespace AdvancedControls.Controls
     [ToolboxItem(true)]
     [DefaultEvent("StepChanged")]
     [DefaultProperty("AdvancedControlOptions")]
+    [Designer(typeof(Design.AdvWizardDesigner))]
     [Description("단계 표시기와 페이지 전환을 담은 마법사 컨테이너입니다.")]
     public class AdvWizard : AdvContainerBase
     {
@@ -38,6 +39,7 @@ namespace AdvancedControls.Controls
 
         private readonly AdvStepper _stepper;
         private readonly List<Panel> _pages = new List<Panel>();
+        private readonly List<string> _titles = new List<string>();   // null이면 Name/"단계 N"으로 대체
         private int _current;
         private Orientation _orientation = Orientation.Horizontal;
         private AdvWizardOptions _options;
@@ -125,9 +127,10 @@ namespace AdvancedControls.Controls
         public Panel AddPage(string title)
         {
             var page = new Panel { Visible = _pages.Count == 0 };
-            _pages.Add(page);
+            _pages.Add(page);            // Controls.Add 전에 등록해 OnControlAdded 채택 경로와 중복되지 않게
+            _titles.Add(title);
             Controls.Add(page);
-            _stepper.AddStep(title);
+            _stepper.AddStep(TitleOf(_pages.Count - 1));
             LayoutParts();
             return page;
         }
@@ -135,14 +138,65 @@ namespace AdvancedControls.Controls
         /// <summary>모든 페이지를 지운다.</summary>
         public void ClearPages()
         {
-            foreach (var p in _pages)
+            // Controls.Remove가 OnControlRemoved로 _pages를 함께 줄이므로 원본을 직접 순회하지 않는다
+            var pages = _pages.ToArray();
+            foreach (var p in pages)
             {
                 Controls.Remove(p);
                 p.Dispose();
             }
             _pages.Clear();
+            _titles.Clear();
             _stepper.ClearSteps();
             _current = 0;
+        }
+
+        /// <summary>
+        /// 디자이너(InitializeComponent 포함)가 Controls.Add로 넣은 패널을 페이지로 받아들인다.
+        /// 제목은 패널 Name(없으면 "단계 N")을 쓴다. AddPage 경로는 이미 등록돼 있어 건너뛴다.
+        /// </summary>
+        protected override void OnControlAdded(ControlEventArgs e)
+        {
+            base.OnControlAdded(e);
+            var p = e.Control as Panel;
+            if (p == null || _pages.Contains(p)) return;
+
+            _pages.Add(p);
+            _titles.Add(null);
+            p.Visible = _pages.Count == 1;
+            RebuildStepper();
+            LayoutParts();
+        }
+
+        /// <summary>페이지 패널이 제거되면(디자이너 삭제 포함) 페이지 목록·스테퍼를 맞춘다.</summary>
+        protected override void OnControlRemoved(ControlEventArgs e)
+        {
+            base.OnControlRemoved(e);
+            var p = e.Control as Panel;
+            if (p == null) return;
+            int i = _pages.IndexOf(p);
+            if (i < 0) return;
+
+            _pages.RemoveAt(i);
+            _titles.RemoveAt(i);
+            if (_current >= _pages.Count) _current = Math.Max(0, _pages.Count - 1);
+            for (int k = 0; k < _pages.Count; k++) _pages[k].Visible = k == _current;
+            RebuildStepper();
+            LayoutParts();
+        }
+
+        private string TitleOf(int i)
+        {
+            if (!string.IsNullOrEmpty(_titles[i])) return _titles[i];
+            var name = _pages[i].Name;
+            return !string.IsNullOrEmpty(name) ? name : "단계 " + (i + 1);
+        }
+
+        private void RebuildStepper()
+        {
+            _stepper.ClearSteps();
+            for (int i = 0; i < _pages.Count; i++) _stepper.AddStep(TitleOf(i));
+            _stepper.CurrentStep = _current;
         }
 
         /// <summary>

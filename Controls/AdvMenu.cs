@@ -45,6 +45,13 @@ namespace AdvancedControls.Controls
         }
 
         public bool Enabled { get; set; }
+
+        /// <summary>체크 항목이면 왼쪽 거터에 체크 표시(✓)가 그려진다. 토글은 호출자가 Click에서 뒤집는다.</summary>
+        public bool Checked { get; set; }
+
+        /// <summary>왼쪽 거터에 그릴 아이콘(16px 논리). <see cref="Checked"/>면 체크가 우선한다.</summary>
+        public Image Image { get; set; }
+
         public object Tag { get; set; }
         public bool IsSeparator { get; internal set; }
 
@@ -208,6 +215,7 @@ namespace AdvancedControls.Controls
         private const int ItemH = 26;
         private const int SepH = 9;
         private const int TextLeft = 28;
+        private const int IconSize = 16;   // 거터 아이콘(논리 px)
         private const int RightPad = 26;
         private const int ShortcutGap = 28;
         private const int ChevW = 14;      // 서브메뉴 셰브런 자리
@@ -368,6 +376,26 @@ namespace AdvancedControls.Controls
                         g.FillPath(br, path);
 
                 Color fg = !it.Enabled ? theme.TextDisabled : hot ? theme.OnAccent : theme.Text;
+
+                // 왼쪽 거터(행 안쪽~TextLeft): 체크 표시가 아이콘보다 우선
+                if (it.Checked)
+                {
+                    int cs = AdvGraphics.Scale(this, 10);
+                    var gutter = new Rectangle(b.Left + 4, r.Top, TextLeft - 8, ItemH);
+                    var chk = new Rectangle(gutter.Left + (gutter.Width - cs) / 2,
+                                            gutter.Top + (gutter.Height - cs) / 2, cs, cs);
+                    AdvGraphics.DrawCheckMark(g, this, chk, !it.Enabled ? theme.TextDisabled : hot ? theme.OnAccent : theme.Accent);
+                }
+                else if (it.Image != null)
+                {
+                    int isz = AdvGraphics.Scale(this, IconSize);
+                    var gutter = new Rectangle(b.Left + 4, r.Top, TextLeft - 8, ItemH);
+                    var ir = new Rectangle(gutter.Left + (gutter.Width - isz) / 2,
+                                           gutter.Top + (gutter.Height - isz) / 2, isz, isz);
+                    if (it.Enabled) g.DrawImage(it.Image, ir);
+                    else AdvGraphics.DrawImageDisabled(g, it.Image, ir);
+                }
+
                 var textRect = Rectangle.FromLTRB(b.Left + TextLeft, r.Top, b.Right - RightPad, r.Bottom);
                 TextRenderer.DrawText(g, it.Text ?? "", Font, textRect, fg,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
@@ -662,6 +690,7 @@ namespace AdvancedControls.Controls
                     if (it.IsSeparator) return AccessibleStates.None;
                     var s = AccessibleStates.Focusable | AccessibleStates.Selectable;
                     if (!it.Enabled) s |= AccessibleStates.Unavailable;
+                    if (it.Checked) s |= AccessibleStates.Checked;
                     if (it.HasChildren) s |= AccessibleStates.HasPopup;
                     var col = _view._cols[_c];
                     if (col.Hover == _i) s |= AccessibleStates.Focused | AccessibleStates.Selected | AccessibleStates.HotTracked;

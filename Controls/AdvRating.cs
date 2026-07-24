@@ -9,6 +9,14 @@ using AdvancedControls.Theming;
 namespace AdvancedControls.Controls
 {
     /// <summary>별점 단위.</summary>
+    /// <summary>별점 글리프 모양.</summary>
+    public enum AdvRatingGlyph
+    {
+        Star,
+        Heart,
+        Circle
+    }
+
     public enum AdvRatingPrecision
     {
         /// <summary>별 1개 단위.</summary>
@@ -34,6 +42,7 @@ namespace AdvancedControls.Controls
         private int _maximum = 5;
         private float _value;
         private AdvRatingPrecision _precision = AdvRatingPrecision.Full;
+        private AdvRatingGlyph _glyph = AdvRatingGlyph.Star;
         private bool _readOnly;
         private float _hoverValue = -1f;    // 미리보기(-1=없음)
         private AdvRatingOptions _options;
@@ -118,6 +127,20 @@ namespace AdvancedControls.Controls
         }
 
         [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
+        [DefaultValue(AdvRatingGlyph.Star)]
+        [Description("점수 글리프 모양(별/하트/원)입니다.")]
+        public AdvRatingGlyph Glyph
+        {
+            get { return _glyph; }
+            set
+            {
+                if (_glyph == value) return;
+                _glyph = value;
+                Invalidate();
+            }
+        }
+
+        [Browsable(false)]      // 속성 창에는 AdvancedControlOptions 안에서만 보인다
         [DefaultValue(false)]
         [Description("표시 전용으로 만들지 여부입니다.")]
         public bool ReadOnly
@@ -178,6 +201,38 @@ namespace AdvancedControls.Controls
             return _maximum;
         }
 
+        /// <summary>현재 글리프 모양의 경로. 호출자가 Dispose 한다.</summary>
+        internal GraphicsPath CreateGlyph(Rectangle r)
+        {
+            switch (_glyph)
+            {
+                case AdvRatingGlyph.Heart: return CreateHeart(r);
+                case AdvRatingGlyph.Circle:
+                    var p = new GraphicsPath();
+                    p.AddEllipse(r);
+                    return p;
+                default: return CreateStar(r);
+            }
+        }
+
+        /// <summary>하트 경로(베지에 4개). 호출자가 Dispose 한다.</summary>
+        internal static GraphicsPath CreateHeart(Rectangle r)
+        {
+            var p = new GraphicsPath();
+            float x = r.X, y = r.Y, w = r.Width, h = r.Height;
+            var top = new PointF(x + w / 2f, y + h * 0.30f);       // 위 가운데 오목점
+            var bottom = new PointF(x + w / 2f, y + h * 0.95f);    // 아래 꼭짓점
+
+            p.AddBezier(top, new PointF(x + w / 2f, y), new PointF(x, y), new PointF(x, y + h * 0.35f));
+            p.AddBezier(new PointF(x, y + h * 0.35f), new PointF(x, y + h * 0.60f),
+                        new PointF(x + w * 0.28f, y + h * 0.75f), bottom);
+            p.AddBezier(bottom, new PointF(x + w * 0.72f, y + h * 0.75f),
+                        new PointF(x + w, y + h * 0.60f), new PointF(x + w, y + h * 0.35f));
+            p.AddBezier(new PointF(x + w, y + h * 0.35f), new PointF(x + w, y), new PointF(x + w / 2f, y), top);
+            p.CloseFigure();
+            return p;
+        }
+
         /// <summary>5각 별 경로. 호출자가 Dispose 한다.</summary>
         internal static GraphicsPath CreateStar(Rectangle r)
         {
@@ -215,7 +270,7 @@ namespace AdvancedControls.Controls
             {
                 var r = StarRect(i);
                 var inset = Rectangle.Inflate(r, -1, -1);
-                using (var path = CreateStar(inset))
+                using (var path = CreateGlyph(inset))
                 {
                     float owned = shown - i;   // 이 별이 채워질 몫(0~1)
                     if (owned >= 1f)
@@ -333,6 +388,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.ReadOnly; }
             set { _owner.ReadOnly = value; }
+        }
+
+        [DefaultValue(AdvRatingGlyph.Star)]
+        [Description("점수 글리프 모양(별/하트/원)입니다.")]
+        public AdvRatingGlyph Glyph
+        {
+            get { return _owner.Glyph; }
+            set { _owner.Glyph = value; }
         }
     }
 }

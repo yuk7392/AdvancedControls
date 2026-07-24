@@ -87,6 +87,21 @@ namespace AdvancedControls.Controls
             get { return _slots.Count > 0; }
         }
 
+        private bool _pullOnDelete;
+
+        /// <summary>
+        /// 지울 때 뒤 값을 앞으로 당길지. 기본 false(표준 MaskedTextBox처럼 자리만 비움).
+        /// 당김은 각 값이 새 자리 종류에 맞을 때까지만 진행한다(숫자 자리에 글자를 당겨 넣지 않는다).
+        /// 입력(덮어쓰기)에는 적용되지 않고 Backspace·Delete·선택 삭제에만 적용된다.
+        /// </summary>
+        [Browsable(false)]
+        [DefaultValue(false)]
+        public bool PullOnDelete
+        {
+            get { return _pullOnDelete; }
+            set { _pullOnDelete = value; }
+        }
+
         /// <summary>리터럴·빈 칸을 뺀, 사용자가 채운 값만. 대입하면 순서대로 다시 채운다.</summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -232,6 +247,31 @@ namespace AdvancedControls.Controls
             }
         }
 
+        /// <summary>
+        /// start부터의 빈 자리에 뒤쪽 값을 순서대로 당겨 넣는다(PullOnDelete).
+        /// 당길 값이 대상 자리 종류에 안 맞으면 거기서 멈춘다 — "000-LL"에서 글자를 숫자 자리로
+        /// 끌어오지 않는다. 리터럴은 제자리 고정이고 값만 자리 표시자 사이를 이동한다.
+        /// </summary>
+        private void PullLeft(int start)
+        {
+            int dst = NextPlaceholder(start);
+            while (dst >= 0)
+            {
+                if (_slots[dst].Value == '\0')
+                {
+                    int src = -1;
+                    for (int i = dst + 1; i < _slots.Count; i++)
+                        if (_slots[i].Kind != '\0' && _slots[i].Value != '\0') { src = i; break; }
+                    if (src < 0) break;                                        // 더 당길 값이 없다
+                    if (!Matches(_slots[dst].Kind, _slots[src].Value)) break;  // 형식 불일치: 중단
+
+                    var d = _slots[dst]; d.Value = _slots[src].Value; _slots[dst] = d;
+                    var s = _slots[src]; s.Value = '\0'; _slots[src] = s;
+                }
+                dst = NextPlaceholder(dst + 1);
+            }
+        }
+
         // ── 표시 갱신 ─────────────────────────────────────────────────
 
         private string DisplayText()
@@ -300,19 +340,20 @@ namespace AdvancedControls.Controls
                 if (sel > 0)
                 {
                     ClearRange(caret, sel);
+                    if (_pullOnDelete) PullLeft(caret);
                     RebuildDisplay(caret);
                 }
                 else if (e.KeyCode == Keys.Back)
                 {
                     // 캐럿 앞의 가장 가까운 자리(리터럴 건너뜀)를 비우고 그 자리로 이동
                     int p = PrevPlaceholder(caret);
-                    if (p >= 0) { ClearRange(p, 1); RebuildDisplay(p); }
+                    if (p >= 0) { ClearRange(p, 1); if (_pullOnDelete) PullLeft(p); RebuildDisplay(p); }
                 }
                 else
                 {
                     // Delete: 캐럿 위치(이후 첫 자리)를 비우고 캐럿은 그대로
                     int p = NextPlaceholder(caret);
-                    if (p >= 0) { ClearRange(p, 1); RebuildDisplay(p); }
+                    if (p >= 0) { ClearRange(p, 1); if (_pullOnDelete) PullLeft(p); RebuildDisplay(p); }
                 }
 
                 e.Handled = true;
@@ -393,6 +434,14 @@ namespace AdvancedControls.Controls
         {
             get { return _owner.PromptChar; }
             set { _owner.PromptChar = value; }
+        }
+
+        [DefaultValue(false)]
+        [Description("지울 때 뒤 값을 앞으로 당깁니다(형식이 맞는 자리까지만). 끄면 표준처럼 자리만 비웁니다.")]
+        public bool PullOnDelete
+        {
+            get { return _owner.PullOnDelete; }
+            set { _owner.PullOnDelete = value; }
         }
     }
 }
